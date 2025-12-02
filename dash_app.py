@@ -4,6 +4,7 @@ Simple version - displays ecommerce tables from Lakebase
 """
 
 import os
+import json
 import dash
 from dash import dcc, html, Input, Output, dash_table
 import dash_bootstrap_components as dbc
@@ -67,7 +68,14 @@ def fetch_table_data(table_name, limit=100):
             with conn.cursor() as cur:
                 cur.execute(f"SELECT * FROM ecommerce.{table_name} LIMIT %s", (limit,))
                 rows = cur.fetchall()
-                return pd.DataFrame(rows) if rows else pd.DataFrame()
+                if not rows:
+                    return pd.DataFrame()
+                df = pd.DataFrame(rows)
+                # Convert any dict/list columns (JSONB) to strings for DataTable display
+                for col in df.columns:
+                    if df[col].apply(lambda x: isinstance(x, (dict, list))).any():
+                        df[col] = df[col].apply(lambda x: json.dumps(x) if isinstance(x, (dict, list)) else x)
+                return df
     except Exception as e:
         print(f"Error fetching {table_name}: {e}")
         return pd.DataFrame({'error': [str(e)]})
