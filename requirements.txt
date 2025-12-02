@@ -1,9 +1,10 @@
-# Requirements for Lakebase Training Dashboard - Simplified
+# Requirements for Lakebase End-to-End Training Dashboard
 # Python 3.9+
 
 # Web Framework
 dash>=2.14.0
 dash-bootstrap-components>=1.5.0
+plotly>=5.18.0
 
 # Database
 psycopg[binary]>=3.1.0
