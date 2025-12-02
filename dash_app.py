@@ -50,19 +50,36 @@ def refresh_oauth_token():
 # ========================================
 # Database Configuration
 # ========================================
+# Hardcoded defaults for lakebasepoc instance
+DEFAULT_PGHOST = "instance-6b59171b-cee8-4acc-9209-6c848ffbfbfe.database.cloud.databricks.com"
+DEFAULT_PGDATABASE = "lakebasepoc"
+DEFAULT_PGUSER = "token"
+DEFAULT_PGPORT = "5432"
+
 def get_connection_pool():
     """Get or create the connection pool."""
     global connection_pool
     if connection_pool is None:
         refresh_oauth_token()
+
+        # Get connection parameters with hardcoded defaults
+        pghost = os.getenv('PGHOST', DEFAULT_PGHOST)
+        pgdatabase = os.getenv('PGDATABASE', DEFAULT_PGDATABASE)
+        pguser = os.getenv('PGUSER', DEFAULT_PGUSER)
+        pgport = os.getenv('PGPORT', DEFAULT_PGPORT)
+        pgsslmode = os.getenv('PGSSLMODE', 'require')
+        pgappname = os.getenv('PGAPPNAME', 'lakebase-training-app')
+
+        print(f"Connecting to Lakebase: host={pghost}, db={pgdatabase}, user={pguser}, port={pgport}")
+
         conn_string = (
-            f"dbname={os.getenv('PGDATABASE')} "
-            f"user={os.getenv('PGUSER')} "
+            f"dbname={pgdatabase} "
+            f"user={pguser} "
             f"password={postgres_password} "
-            f"host={os.getenv('PGHOST')} "
-            f"port={os.getenv('PGPORT')} "
-            f"sslmode={os.getenv('PGSSLMODE', 'require')} "
-            f"application_name={os.getenv('PGAPPNAME', 'lakebase-training-app')}"
+            f"host={pghost} "
+            f"port={pgport} "
+            f"sslmode={pgsslmode} "
+            f"application_name={pgappname}"
         )
         connection_pool = ConnectionPool(conn_string, min_size=2, max_size=10)
         print("Connection pool created successfully")
@@ -92,7 +109,9 @@ class LakebaseConnection:
         self._conn_context = None
 
     def __enter__(self):
-        self.connect()
+        success = self.connect()
+        if not success:
+            print("WARNING: LakebaseConnection.__enter__() - Connection failed!")
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
@@ -101,13 +120,20 @@ class LakebaseConnection:
     def connect(self):
         """Establish connection to Lakebase"""
         try:
+            print("LakebaseConnection.connect() - Getting connection pool...")
             pool = get_connection_pool_instance()
+            print("LakebaseConnection.connect() - Got pool, getting connection...")
             self._conn_context = pool.connection()
+            print("LakebaseConnection.connect() - Got context, entering...")
             self.connection = self._conn_context.__enter__()
+            print("LakebaseConnection.connect() - Got connection, creating cursor...")
             self.cursor = self.connection.cursor(row_factory=dict_row)
+            print("LakebaseConnection.connect() - Connection established successfully")
             return True
         except Exception as e:
-            print(f"Connection failed: {e}")
+            print(f"LakebaseConnection.connect() - Connection failed: {e}")
+            import traceback
+            traceback.print_exc()
             return False
 
     def execute_query(self, query, params=None):
