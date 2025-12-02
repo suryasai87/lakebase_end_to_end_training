@@ -41,7 +41,7 @@ def get_oauth_token():
 # Database Configuration
 # ========================================
 PGHOST = os.getenv('PGHOST', 'instance-6b59171b-cee8-4acc-9209-6c848ffbfbfe.database.cloud.databricks.com')
-PGDATABASE = os.getenv('PGDATABASE', 'lakebasepoc')
+PGDATABASE = os.getenv('PGDATABASE', 'databricks_postgres')
 # Use the app's service principal ID as username (from the OAuth token)
 PGUSER = os.getenv('PGUSER', '1e6260c5-f44b-4d66-bb19-ccd360f98b36')
 PGPORT = os.getenv('PGPORT', '5432')
