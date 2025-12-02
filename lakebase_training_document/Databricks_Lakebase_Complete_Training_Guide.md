@@ -93,25 +93,40 @@ Databricks Lakebase is a fully-managed serverless PostgreSQL database that emerg
 
 ### 2.2 Connecting to Lakebase
 
+**Important Authentication Note:**
+When connecting to Lakebase, the `PGUSER` must match the identity in your OAuth token:
+- **For local development with user credentials:** Use your Databricks email as PGUSER
+- **For Databricks Apps (Service Principal):** Use the Service Principal ID as PGUSER
+
 **Using DBeaver:**
 1. Create new PostgreSQL connection
 2. Enter connection details:
-   - Host: `instance-XXXXX.database.cloud.databricks.com`
+   - Host: `instance-<instance-id>.database.cloud.databricks.com`
    - Port: `5432`
    - Database: `databricks_postgres`
-   - Username: `token`
+   - Username: Your email or Service Principal ID
    - Password: `<your-oauth-token>`
    - SSL Mode: `require`
 
-**Using psql:**
+**Using psql (Local Development):**
 ```bash
-export PGHOST="instance-XXXXX.database.cloud.databricks.com"
+export PGHOST="instance-<instance-id>.database.cloud.databricks.com"
 export PGDATABASE="databricks_postgres"
-export PGUSER="token"
+export PGUSER="your.email@company.com"  # Must match OAuth token identity
 export PGPASSWORD="<your-oauth-token>"
 export PGSSLMODE="require"
 
 psql
+```
+
+**For Databricks Apps Deployment:**
+```bash
+# In app.yaml, use Service Principal ID
+export PGHOST="instance-<instance-id>.database.cloud.databricks.com"
+export PGDATABASE="databricks_postgres"
+export PGUSER="<service-principal-id>"  # e.g., 1e6260c5-f44b-4d66-bb19-ccd360f98b36
+export PGPORT="5432"
+export PGSSLMODE="require"
 ```
 
 ### 2.3 OAuth Token Authentication
@@ -130,6 +145,30 @@ token = workspace_client.config.oauth_token().access_token
 # Use as password
 PGPASSWORD = token
 ```
+
+### 2.4 Granting Permissions to Service Principals
+
+When deploying apps to Databricks, you need to grant database permissions to the Service Principal:
+
+```sql
+-- Connect as a user with GRANT permissions
+-- Grant schema access
+GRANT USAGE ON SCHEMA ecommerce TO "<service-principal-id>";
+
+-- Grant table access
+GRANT SELECT ON ALL TABLES IN SCHEMA ecommerce TO "<service-principal-id>";
+
+-- For write access (INSERT, UPDATE, DELETE)
+GRANT INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA ecommerce TO "<service-principal-id>";
+
+-- Grant for future tables
+ALTER DEFAULT PRIVILEGES IN SCHEMA ecommerce GRANT SELECT ON TABLES TO "<service-principal-id>";
+ALTER DEFAULT PRIVILEGES IN SCHEMA ecommerce GRANT INSERT, UPDATE, DELETE ON TABLES TO "<service-principal-id>";
+```
+
+**Finding Your Service Principal ID:**
+1. Check the app logs for "OAuth token identity" errors - it will show the SP ID
+2. Or find it in Databricks Admin Console → Service Principals
 
 ---
 
@@ -346,38 +385,55 @@ The training application is built with:
 
 ```python
 from databricks import sdk
-from psycopg_pool import ConnectionPool
+import psycopg
+from psycopg.rows import dict_row
 import os
 import time
 
-# Initialize workspace client
-workspace_client = sdk.WorkspaceClient()
+# OAuth Token Management
+workspace_client = None
 postgres_password = None
 last_password_refresh = 0
-connection_pool = None
 
-def refresh_oauth_token():
-    """Refresh OAuth token if expired (every 15 minutes)."""
-    global postgres_password, last_password_refresh
+def get_oauth_token():
+    """Get OAuth token from Databricks SDK with auto-refresh."""
+    global workspace_client, postgres_password, last_password_refresh
+
+    # Refresh token every 15 minutes (tokens expire after 1 hour)
     if postgres_password is None or time.time() - last_password_refresh > 900:
-        postgres_password = workspace_client.config.oauth_token().access_token
-        last_password_refresh = time.time()
+        print("Refreshing OAuth token...")
+        try:
+            if workspace_client is None:
+                workspace_client = sdk.WorkspaceClient()
+            postgres_password = workspace_client.config.oauth_token().access_token
+            last_password_refresh = time.time()
+            print("OAuth token refreshed successfully")
+        except Exception as e:
+            print(f"Failed to get OAuth token: {e}")
+            raise
+    return postgres_password
 
-def get_connection_pool():
-    """Get or create the connection pool."""
-    global connection_pool
-    if connection_pool is None:
-        refresh_oauth_token()
-        conn_string = (
-            f"dbname={os.getenv('PGDATABASE')} "
-            f"user={os.getenv('PGUSER')} "
-            f"password={postgres_password} "
-            f"host={os.getenv('PGHOST')} "
-            f"port={os.getenv('PGPORT')} "
-            f"sslmode=require"
-        )
-        connection_pool = ConnectionPool(conn_string, min_size=2, max_size=10)
-    return connection_pool
+# Database Configuration
+# IMPORTANT: PGUSER must match the OAuth token identity
+# - For local dev: your email
+# - For Databricks Apps: Service Principal ID
+PGHOST = os.getenv('PGHOST', 'instance-<id>.database.cloud.databricks.com')
+PGDATABASE = os.getenv('PGDATABASE', 'databricks_postgres')
+PGUSER = os.getenv('PGUSER', '<service-principal-id>')
+PGPORT = os.getenv('PGPORT', '5432')
+
+def get_db_connection():
+    """Get a fresh database connection."""
+    token = get_oauth_token()
+    conn_string = (
+        f"dbname={PGDATABASE} "
+        f"user={PGUSER} "
+        f"password={token} "
+        f"host={PGHOST} "
+        f"port={PGPORT} "
+        f"sslmode=require"
+    )
+    return psycopg.connect(conn_string, row_factory=dict_row)
 ```
 
 ### 5.3 LakebaseConnection Context Manager
@@ -399,12 +455,18 @@ class LakebaseConnection:
 
     def connect(self):
         """Establish connection to Lakebase"""
-        self.connection = get_connection_pool().connection()
-        self.cursor = self.connection.cursor(row_factory=dict_row)
-        return True
+        try:
+            self.connection = get_db_connection()
+            self.cursor = self.connection.cursor()
+            return True
+        except Exception as e:
+            print(f"Connection failed: {e}")
+            return False
 
     def execute_query(self, query, params=None):
         """Execute a query and return results"""
+        if not self.connection or not self.cursor:
+            raise Exception("Database connection not established")
         try:
             self.cursor.execute(query, params)
             if query.strip().upper().startswith('SELECT'):
@@ -417,18 +479,58 @@ class LakebaseConnection:
                 self.connection.commit()
                 return self.cursor.rowcount
         except Exception as e:
-            self.connection.rollback()
+            if self.connection:
+                try:
+                    self.connection.rollback()
+                except Exception:
+                    pass
             raise e
 
     def close(self):
         """Close database connection"""
-        if self.cursor:
-            self.cursor.close()
-        if self.connection:
-            self.connection.close()
+        try:
+            if self.cursor:
+                self.cursor.close()
+        except Exception:
+            pass
+        try:
+            if self.connection:
+                self.connection.close()
+        except Exception:
+            pass
+        self.cursor = None
+        self.connection = None
 ```
 
-### 5.4 Dashboard Metrics
+### 5.4 Handling JSONB Columns in Dash DataTables
+
+JSONB columns return Python dicts/lists, but Dash DataTable only accepts primitive types:
+
+```python
+import json
+
+def convert_for_datatable(df):
+    """Convert JSONB columns to strings for DataTable display."""
+    if df.empty:
+        return df
+    for col in df.columns:
+        if df[col].apply(lambda x: isinstance(x, (dict, list))).any():
+            df[col] = df[col].apply(
+                lambda x: json.dumps(x) if isinstance(x, (dict, list)) else x
+            )
+    return df
+
+# Usage in callbacks:
+@app.callback(...)
+def update_table(n):
+    with LakebaseConnection() as db:
+        results = db.execute_query("SELECT * FROM ecommerce.orders")
+        df = pd.DataFrame(results)
+        df = convert_for_datatable(df)  # Convert JSONB before display
+        return dash_table.DataTable(data=df.to_dict('records'), ...)
+```
+
+### 5.5 Dashboard Metrics
 
 ```python
 @app.callback(
@@ -798,11 +900,35 @@ could not connect to server: Connection refused
 ```
 **Solution:** Verify PGHOST is correct and instance is running.
 
+**Error: OAuth token identity mismatch**
+```
+OAuth token identity 'xxxx-xxxx' did not match the security label configured for role 'user@email.com'
+```
+**Solution:** The PGUSER must match the OAuth token identity:
+- For Databricks Apps: Use Service Principal ID as PGUSER
+- For local dev: Use your Databricks email as PGUSER
+
+**Error: Role does not exist**
+```
+FATAL: role "token" does not exist
+```
+**Solution:** Don't use "token" as PGUSER. Use the actual identity (Service Principal ID or email).
+
+**Error: Permission denied**
+```
+permission denied for table users
+```
+**Solution:** Grant permissions to the identity:
+```sql
+GRANT USAGE ON SCHEMA ecommerce TO "<service-principal-id>";
+GRANT SELECT ON ALL TABLES IN SCHEMA ecommerce TO "<service-principal-id>";
+```
+
 **Error: Authentication failed**
 ```
 password authentication failed
 ```
-**Solution:** OAuth tokens expire after 1 hour. Refresh the token.
+**Solution:** OAuth tokens expire after 1 hour. The app auto-refreshes every 15 minutes.
 
 ### Database Errors
 
@@ -817,6 +943,12 @@ relation "ecommerce.users" does not exist
 relation "ecommerce.audit_log" does not exist
 ```
 **Solution:** The enhanced schema includes audit tables. Run the full setup script.
+
+**Error: JSONB display in DataTable**
+```
+Expected string, number, boolean - got dict
+```
+**Solution:** Use `convert_for_datatable()` function to convert JSONB to strings before display.
 
 ### Application Errors
 

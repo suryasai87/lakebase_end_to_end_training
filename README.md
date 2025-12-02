@@ -2,7 +2,7 @@
 
 A comprehensive training application demonstrating **advanced Databricks Lakebase (PostgreSQL)** features including audit trails, bulk imports, real-time insert verification, and multi-table transactions.
 
-**Live Demo:** [https://lakebase-training-app-1602460480284688.aws.databricksapps.com](https://lakebase-training-app-1602460480284688.aws.databricksapps.com)
+**Live Demo:** [https://lakebase-end-to-end-training-1602460480284688.aws.databricksapps.com](https://lakebase-end-to-end-training-1602460480284688.aws.databricksapps.com)
 
 ---
 
@@ -45,10 +45,11 @@ cd lakebase_end_to_end_training
 # Install dependencies
 pip install -r requirements.txt
 
-# Set environment variables
-export PGHOST="your-lakebase-host"
+# Set environment variables (for local development)
+# Note: When deployed to Databricks Apps, use the Service Principal ID as PGUSER
+export PGHOST="instance-<your-instance-id>.database.cloud.databricks.com"
 export PGDATABASE="databricks_postgres"
-export PGUSER="token"
+export PGUSER="<your-service-principal-id>"  # e.g., 1e6260c5-f44b-4d66-bb19-ccd360f98b36
 export PGPORT="5432"
 export PGSSLMODE="require"
 
@@ -131,14 +132,28 @@ pip install -r requirements.txt
 
 ### Step 4: Set Environment Variables
 
+**Important:** When deploying to Databricks Apps, the app runs as a Service Principal. You must use the Service Principal ID as the `PGUSER`, not "token" or your email address.
+
 ```bash
-export PGHOST="instance-XXXXX.database.cloud.databricks.com"
+# For Databricks Apps deployment
+export PGHOST="instance-<instance-id>.database.cloud.databricks.com"
 export PGDATABASE="databricks_postgres"
-export PGUSER="token"
-export PGPASSWORD="<your-oauth-token>"
+export PGUSER="<service-principal-id>"  # e.g., 1e6260c5-f44b-4d66-bb19-ccd360f98b36
 export PGPORT="5432"
 export PGSSLMODE="require"
-export PGAPPNAME="lakebase-training-app"
+export PGAPPNAME="lakebase-end-to-end-training"
+```
+
+**Finding Your Service Principal ID:**
+1. Check your app's OAuth token identity in the logs
+2. Or find it in the Databricks Admin Console under Service Principals
+
+**Grant Permissions to Service Principal:**
+```sql
+-- Grant access to the service principal
+GRANT USAGE ON SCHEMA ecommerce TO "<service-principal-id>";
+GRANT SELECT ON ALL TABLES IN SCHEMA ecommerce TO "<service-principal-id>";
+ALTER DEFAULT PRIVILEGES IN SCHEMA ecommerce GRANT SELECT ON TABLES TO "<service-principal-id>";
 ```
 
 ### Step 5: Run Database Setup
@@ -476,13 +491,48 @@ lakebase_end_to_end_training/
 
 ### Common Issues
 
-**1. Audit log table not found**
+**1. OAuth token identity mismatch**
+```
+Error: OAuth token identity 'xxxx-xxxx' did not match the security label configured for role 'user@email.com'
+```
+**Solution:** The PGUSER must match the OAuth token identity. When running as a Databricks App, use the Service Principal ID as PGUSER, not your email or "token".
+
+**2. Role does not exist**
+```
+Error: FATAL: role "token" does not exist
+```
+**Solution:** Use the Service Principal ID as PGUSER. The OAuth token authenticates the identity, but PGUSER specifies which role to connect as.
+
+**3. Permission denied on table**
+```
+Error: permission denied for table users
+```
+**Solution:** Grant permissions to the service principal:
+```sql
+GRANT USAGE ON SCHEMA ecommerce TO "<service-principal-id>";
+GRANT SELECT ON ALL TABLES IN SCHEMA ecommerce TO "<service-principal-id>";
+```
+
+**4. JSONB column display error in DataTable**
+```
+Error: Expected string, number, boolean - got dict/list
+```
+**Solution:** Convert JSONB columns to strings before displaying in Dash DataTable:
+```python
+def convert_for_datatable(df):
+    for col in df.columns:
+        if df[col].apply(lambda x: isinstance(x, (dict, list))).any():
+            df[col] = df[col].apply(lambda x: json.dumps(x) if isinstance(x, (dict, list)) else x)
+    return df
+```
+
+**5. Audit log table not found**
 ```
 Error: relation "ecommerce.audit_log" does not exist
 ```
 **Solution:** Run `setup_database.sql` to create all tables including audit_log.
 
-**2. Triggers not working**
+**6. Triggers not working**
 ```
 No audit records appearing
 ```
@@ -493,19 +543,19 @@ FROM information_schema.triggers
 WHERE trigger_schema = 'ecommerce';
 ```
 
-**3. OAuth token expired**
+**7. OAuth token expired**
 ```
 Error: password authentication failed
 ```
-**Solution:** Tokens expire after 1 hour. Refresh using `workspace_client.config.oauth_token()`.
+**Solution:** Tokens expire after 1 hour. The app automatically refreshes tokens every 15 minutes using `workspace_client.config.oauth_token()`.
 
-**4. Connection pool exhausted**
+**8. Connection pool exhausted**
 ```
 Error: connection pool is full
 ```
-**Solution:** The app automatically recycles connections. Restart the app if this persists.
+**Solution:** The app uses direct connections with context managers for automatic cleanup. Restart the app if this persists.
 
-**5. 502 Bad Gateway**
+**9. 502 Bad Gateway**
 ```
 Error: 502 Bad Gateway
 ```
