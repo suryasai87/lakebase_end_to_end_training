@@ -112,6 +112,8 @@ class LakebaseConnection:
 
     def execute_query(self, query, params=None):
         """Execute a query and return results"""
+        if not self.connection or not self.cursor:
+            raise Exception("Database connection not established")
         try:
             self.cursor.execute(query, params)
             if query.strip().upper().startswith('SELECT'):
@@ -124,15 +126,28 @@ class LakebaseConnection:
                 self.connection.commit()
                 return self.cursor.rowcount
         except Exception as e:
-            self.connection.rollback()
+            if self.connection:
+                try:
+                    self.connection.rollback()
+                except Exception:
+                    pass
             raise e
 
     def close(self):
         """Close database connection"""
-        if self.cursor:
-            self.cursor.close()
-        if self._conn_context:
-            self._conn_context.__exit__(None, None, None)
+        try:
+            if self.cursor:
+                self.cursor.close()
+        except Exception:
+            pass
+        try:
+            if self._conn_context:
+                self._conn_context.__exit__(None, None, None)
+        except Exception:
+            pass
+        self.cursor = None
+        self.connection = None
+        self._conn_context = None
 
 # ========================================
 # Initialize Dash App with Bootstrap and custom CSS
