@@ -53,7 +53,7 @@ def refresh_oauth_token():
 # Hardcoded defaults for lakebasepoc instance
 DEFAULT_PGHOST = "instance-6b59171b-cee8-4acc-9209-6c848ffbfbfe.database.cloud.databricks.com"
 DEFAULT_PGDATABASE = "lakebasepoc"
-DEFAULT_PGUSER = "token"
+DEFAULT_PGUSER = "suryasai.turaga@databricks.com"  # Use email as username for Lakebase
 DEFAULT_PGPORT = "5432"
 
 def get_connection_pool():
