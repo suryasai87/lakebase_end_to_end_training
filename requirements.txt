@@ -6,6 +6,9 @@ dash==2.14.2
 dash-bootstrap-components==1.5.0
 plotly==5.18.0
 
+# Fix orjson circular import issue
+orjson>=3.9.0,<4.0.0
+
 # Database connectivity
 psycopg[binary,pool]>=3.1.0
 sqlalchemy==2.0.23
