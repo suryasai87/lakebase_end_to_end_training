@@ -14,8 +14,8 @@ import time
 
 # Lakebase connection configuration
 LAKEBASE_CONFIG = {
-    'host': 'instance-868832b3-5ee5-4d06-a412-b5d13e28d853.database.cloud.databricks.com',
-    'database': 'databricks_postgres',
+    'host': 'instance-6b59171b-cee8-4acc-9209-6c848ffbfbfe.database.cloud.databricks.com',
+    'database': 'lakebasepoc',
     'user': 'token',
     'port': 5432,
     'sslmode': 'require'

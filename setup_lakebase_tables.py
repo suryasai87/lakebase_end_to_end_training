@@ -9,8 +9,8 @@ import sys
 import time
 
 # Configuration
-LAKEBASE_HOST = os.getenv('PGHOST', 'instance-868832b3-5ee5-4d06-a412-b5d13e28d853.database.cloud.databricks.com')
-LAKEBASE_DATABASE = os.getenv('PGDATABASE', 'databricks_postgres')
+LAKEBASE_HOST = os.getenv('PGHOST', 'instance-6b59171b-cee8-4acc-9209-6c848ffbfbfe.database.cloud.databricks.com')
+LAKEBASE_DATABASE = os.getenv('PGDATABASE', 'lakebasepoc')
 LAKEBASE_USER = os.getenv('PGUSER', 'token')
 LAKEBASE_PORT = os.getenv('PGPORT', '5432')
 
