@@ -68,8 +68,8 @@ def get_connection_pool():
         print("Connection pool created successfully")
     return connection_pool
 
-def get_connection():
-    """Get a connection from the pool."""
+def get_connection_pool_instance():
+    """Get or create the connection pool and return it."""
     global connection_pool
 
     # Recreate pool if token expired
@@ -78,7 +78,7 @@ def get_connection():
             connection_pool.close()
             connection_pool = None
 
-    return get_connection_pool().connection()
+    return get_connection_pool()
 
 # ========================================
 # Database Connection Manager
@@ -89,6 +89,7 @@ class LakebaseConnection:
     def __init__(self):
         self.connection = None
         self.cursor = None
+        self._conn_context = None
 
     def __enter__(self):
         self.connect()
@@ -100,7 +101,9 @@ class LakebaseConnection:
     def connect(self):
         """Establish connection to Lakebase"""
         try:
-            self.connection = get_connection()
+            pool = get_connection_pool_instance()
+            self._conn_context = pool.connection()
+            self.connection = self._conn_context.__enter__()
             self.cursor = self.connection.cursor(row_factory=dict_row)
             return True
         except Exception as e:
@@ -128,8 +131,8 @@ class LakebaseConnection:
         """Close database connection"""
         if self.cursor:
             self.cursor.close()
-        if self.connection:
-            self.connection.close()
+        if self._conn_context:
+            self._conn_context.__exit__(None, None, None)
 
 # ========================================
 # Initialize Dash App with Bootstrap and custom CSS
