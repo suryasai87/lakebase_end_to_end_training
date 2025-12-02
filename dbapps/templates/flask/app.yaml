@@ -1,0 +1,23 @@
+# Databricks App Configuration - Flask Template
+# =====================================================
+
+command:
+  - python
+  - app.py
+
+env:
+  - name: APP_TITLE
+    value: "My Databricks Flask App"
+
+  - name: DEBUG
+    value: "false"  # NEVER set to true in production
+
+  - name: SECRET_KEY
+    value: "change-this-to-a-random-secret-key"  # Use Databricks Secrets in production
+
+# Notes:
+# ------
+# 1. app.py MUST use DATABRICKS_APP_PORT environment variable
+# 2. app.run() MUST use host='0.0.0.0'
+# 3. Never set DEBUG=true in production
+# 4. Always use Databricks Secrets for SECRET_KEY

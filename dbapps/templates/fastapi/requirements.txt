@@ -1,0 +1,16 @@
+# Databricks FastAPI App Requirements
+# =====================================================
+
+# Web Framework
+fastapi==0.109.0
+uvicorn==0.27.0
+
+# Data validation
+pydantic==2.5.3
+
+# Database (uncomment if needed)
+# sqlalchemy==2.0.23
+# psycopg2-binary==2.9.9
+
+# Environment management
+python-dotenv==1.0.0

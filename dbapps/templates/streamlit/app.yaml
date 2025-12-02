@@ -1,0 +1,51 @@
+# Databricks App Configuration - Streamlit Template
+# =====================================================
+# This configuration file defines how your Streamlit app runs in Databricks Apps
+
+# Command to start the app
+# Streamlit automatically uses DATABRICKS_APP_PORT and binds to 0.0.0.0
+command:
+  - streamlit
+  - run
+  - app.py
+  - --server.address
+  - "0.0.0.0"
+
+# Environment variables
+env:
+  # App configuration
+  - name: APP_TITLE
+    value: "My Databricks Streamlit App"
+
+  - name: DEBUG
+    value: "false"
+
+  # Streamlit-specific settings
+  - name: STREAMLIT_GATHER_USAGE_STATS
+    value: "false"
+
+  - name: STREAMLIT_SERVER_HEADLESS
+    value: "true"
+
+  # Database configuration (uncomment and fill in if needed)
+  # - name: DB_HOST
+  #   value: "your-database-host.com"
+  #
+  # - name: DB_NAME
+  #   value: "your_database"
+  #
+  # - name: DB_USER
+  #   value: "your_username"
+  #
+  # - name: DB_PASSWORD
+  #   value: "your_password"
+  #
+  # - name: DB_PORT
+  #   value: "5432"
+
+# Notes:
+# ------
+# 1. Streamlit automatically handles DATABRICKS_APP_PORT
+# 2. Always include --server.address 0.0.0.0 in the command
+# 3. Use Databricks Secrets for sensitive values
+# 4. Set STREAMLIT_GATHER_USAGE_STATS to false for privacy

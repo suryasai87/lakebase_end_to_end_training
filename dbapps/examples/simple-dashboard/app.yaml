@@ -1,0 +1,25 @@
+# Databricks App Configuration - Simple Dashboard Example
+# ========================================================
+
+command:
+  - python
+  - app.py
+
+env:
+  - name: APP_TITLE
+    value: "Simple Dashboard Example"
+
+  - name: DEBUG
+    value: "false"
+
+# Notes:
+# ------
+# This is a complete, working example that demonstrates:
+# 1. Proper port configuration (app.py uses DATABRICKS_APP_PORT)
+# 2. Host binding to 0.0.0.0
+# 3. Environment variable usage
+# 4. Production-ready settings
+#
+# To deploy:
+# 1. databricks apps create simple-dashboard --description "Simple Dashboard Example"
+# 2. databricks apps deploy simple-dashboard --source-code-path .

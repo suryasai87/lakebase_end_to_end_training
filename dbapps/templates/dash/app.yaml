@@ -1,0 +1,41 @@
+# Databricks App Configuration - Dash Template
+# =====================================================
+# This configuration file defines how your Dash app runs in Databricks Apps
+
+# Command to start the app
+command:
+  - python
+  - app.py
+
+# Environment variables
+env:
+  # App configuration
+  - name: APP_TITLE
+    value: "My Databricks Dash App"
+
+  - name: DEBUG
+    value: "false"  # Set to "true" only for development
+
+  # Database configuration (uncomment and fill in if needed)
+  # - name: DB_HOST
+  #   value: "your-database-host.com"
+  #
+  # - name: DB_NAME
+  #   value: "your_database"
+  #
+  # - name: DB_USER
+  #   value: "your_username"
+  #
+  # - name: DB_PASSWORD
+  #   value: "your_password"
+  #
+  # - name: DB_PORT
+  #   value: "5432"
+
+# Notes:
+# ------
+# 1. The app.py file MUST use DATABRICKS_APP_PORT environment variable
+# 2. The app MUST bind to host 0.0.0.0
+# 3. Never hardcode ports in your Python code
+# 4. Use Databricks Secrets for sensitive values like passwords
+# 5. Set DEBUG to false in production

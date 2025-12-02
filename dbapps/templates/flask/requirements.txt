@@ -1,0 +1,13 @@
+# Databricks Flask App Requirements
+# =====================================================
+
+# Web Framework
+Flask==3.0.0
+Werkzeug==3.0.1
+
+# Database (uncomment if needed)
+# Flask-SQLAlchemy==3.1.1
+# psycopg2-binary==2.9.9
+
+# Environment management
+python-dotenv==1.0.0

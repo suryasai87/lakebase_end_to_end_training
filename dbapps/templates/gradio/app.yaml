@@ -1,0 +1,19 @@
+# Databricks App Configuration - Gradio Template
+# =====================================================
+
+command:
+  - python
+  - app.py
+
+env:
+  - name: APP_TITLE
+    value: "My Databricks Gradio App"
+
+  - name: DEBUG
+    value: "false"
+
+# Notes:
+# ------
+# 1. app.py MUST use DATABRICKS_APP_PORT environment variable
+# 2. demo.launch() MUST use server_name="0.0.0.0"
+# 3. Never hardcode ports in your Python code

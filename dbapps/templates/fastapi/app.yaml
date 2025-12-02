@@ -1,0 +1,20 @@
+# Databricks App Configuration - FastAPI Template
+# =====================================================
+
+command:
+  - python
+  - app.py
+
+env:
+  - name: APP_TITLE
+    value: "My Databricks FastAPI App"
+
+  - name: DEBUG
+    value: "false"
+
+# Notes:
+# ------
+# 1. app.py MUST use DATABRICKS_APP_PORT environment variable
+# 2. uvicorn.run() MUST use host="0.0.0.0"
+# 3. Never set DEBUG=true in production
+# 4. Auto-generated docs available at /docs and /redoc

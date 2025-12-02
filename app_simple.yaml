@@ -1,0 +1,15 @@
+command:
+  - python
+  - dash_app_simple.py
+
+env:
+  - name: LAKEBASE_HOST
+    value: "instance-868832b3-5ee5-4d06-a412-b5d13e28d853.database.cloud.databricks.com"
+  - name: LAKEBASE_DB
+    value: "databricks_postgres"
+  - name: LAKEBASE_USER
+    value: "suryasai.turaga@databricks.com"
+  - name: LAKEBASE_PASSWORD
+    value: "eyJraWQiOiI2NDZiZWZkNGY5NjYwMTdiNjk1MjRjOTRlMjcxNzljY2YyZmRlZDU1ZGJiMzQ5N2UwZjEwM2EwMzljZjI2ODU3IiwidHlwIjoiYXQrand0IiwiYWxnIjoiUlMyNTYifQ.eyJjbGllbnRfaWQiOiJkYXRhYnJpY2tzLXNlc3Npb24iLCJzY29wZSI6ImlhbS5jdXJyZW50LXVzZXI6cmVhZCBpYW0uZ3JvdXBzOnJlYWQgaWFtLnNlcnZpY2UtcHJpbmNpcGFsczpyZWFkIGlhbS51c2VyczpyZWFkIiwiaWRtIjoiRUFBPSIsImlzcyI6Imh0dHBzOi8vZTItZGVtby1maWVsZC1lbmcuY2xvdWQuZGF0YWJyaWNrcy5jb20vb2lkYyIsImF1ZCI6IjE0NDQ4MjgzMDU4MTA0ODUiLCJzdWIiOiJzdXJ5YXNhaS50dXJhZ2FAZGF0YWJyaWNrcy5jb20iLCJpYXQiOjE3NjM3NDAxMjgsImV4cCI6MTc2Mzc0MzcyOCwianRpIjoiN2VkYTk5ZTAtNWI2NC00NWVjLTkyZmQtYjAzOTlmMmIxNTU2In0.oaSX4wnqF0Je-H781pYT_nRdl99bo9PWcu5TMqcJY0-i8M1UugiN5_EM2i1aWrLjIXdBmlIdF-NdBVeBSUNgOy5z_RNg21b0H8gkzS6Gw0nnv4uqqFizLcjMkstnt9Xp2-h4kmTK7DZ5Jfr4Wl4nQKSHnII3d6uOHp4srUkc3C7HtzBcmzZON1D2Capc-JSEwytU5eGzVpZiXegfdbcjxXHNOcyY_HD6wJYRfMbdJeFqX236mVtVMYSsgyiIDTWvDF9fmYM-Z_IKaB1MFMm2O19-BFqP4MN-Wbt3H2g2U8KdPHTf-85nrd7ylVIFno3iNJwfzbq0NMoGF-G_sZiy4Q"
+  - name: LAKEBASE_PORT
+    value: "5432"

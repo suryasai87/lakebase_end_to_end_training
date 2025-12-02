@@ -1,0 +1,11 @@
+bundle:
+  name: lakebase-training-app
+
+resources:
+  apps:
+    lakebase_training_dashboard:
+      name: lakebase-training-app
+      description: "Interactive Lakebase Training Dashboard with Dash - Fixed 502 Error"
+
+      # Source configuration
+      source_code_path: .
