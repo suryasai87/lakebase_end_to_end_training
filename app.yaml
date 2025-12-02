@@ -8,7 +8,7 @@ env:
   - name: PGDATABASE
     value: "lakebasepoc"
   - name: PGUSER
-    value: "suryasai.turaga@databricks.com"
+    value: "1e6260c5-f44b-4d66-bb19-ccd360f98b36"
   - name: PGPORT
     value: "5432"
   - name: PGSSLMODE
