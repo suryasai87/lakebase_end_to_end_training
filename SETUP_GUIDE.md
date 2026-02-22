@@ -1,10 +1,6 @@
-# 🚀 Databricks Lakebase Training App - Complete Setup Guide
+# Databricks Lakebase Autoscaling Training App - Setup Guide
 
-## ✅ All Files Deployed Successfully!
-
----
-
-## 📍 Your App is Here
+## Your App Configuration
 
 ### Databricks Workspace
 **URL**: https://fe-vm-hls-amer.cloud.databricks.com/
@@ -23,60 +19,87 @@
 
 ---
 
-## 🗄️ Your Lakebase Database Connection
+## Lakebase Autoscaling Connection
 
-**Instance**: `instance-868832b3-5ee5-4d06-a412-b5d13e28d853.database.cloud.databricks.com`
-**Database**: `databricks_postgres`
-**User**: `suryasai.turaga@databricks.com`
-**Port**: `5432`
-**SSL Mode**: `require`
+The app uses **Lakebase Autoscaling** which discovers endpoints and generates credentials automatically.
 
-✅ **Configuration already set up** in `app.yaml` and `setup_and_deploy.py`
+**Configuration (app.yaml):**
+- `LAKEBASE_PROJECT_ID`: Your project ID (e.g., `training-app`)
+- `LAKEBASE_BRANCH_ID`: Branch to connect to (default: `production`)
 
----
-
-## 📦 What's Been Deployed
-
-All files are ready in your Databricks workspace:
-
-1. ✅ **dash_app.py** - Main Dash application with Framer Motion animations
-2. ✅ **app.yaml** - Configured with your Lakebase credentials
-3. ✅ **requirements.txt** - All Python dependencies
-4. ✅ **setup_database.sql** - Complete database setup script
-5. ✅ **setup_and_deploy.py** - Automated setup script
-6. ✅ **README.md**, **DEPLOYMENT.md**, **FINAL_DEPLOYMENT.md** - Documentation
-7. ✅ **databricks.yml** - Databricks bundle configuration
+> **Note:** No hardcoded hostnames or tokens. The app uses the Databricks SDK (`w.postgres`) to discover endpoints and generate short-lived credentials at runtime.
 
 ---
 
-## 🎯 Quick Start - Run the App in 3 Steps
+## What's Been Deployed
 
-### Step 1: Set Up the Database (5 minutes)
+1. **dash_app.py** - Main Dash application with autoscaling connection logic
+2. **setup_lakebase_project.py** - Script to create/manage Lakebase Autoscaling projects
+3. **setup_lakebase_tables.py** - Script to create tables and sample data
+4. **app.yaml** - Configured with LAKEBASE_PROJECT_ID and LAKEBASE_BRANCH_ID
+5. **requirements.txt** - All Python dependencies
+6. **setup_database.sql** - Complete database setup script
+7. **databricks.yml** - Databricks bundle configuration
 
-Navigate to your Databricks workspace and open a **SQL Editor** or **Notebook**:
+---
 
-#### Option A: Using SQL Editor (Easiest)
-1. Go to: https://fe-vm-hls-amer.cloud.databricks.com/sql/editor
-2. Connect to your Lakebase instance
-3. Copy and paste the entire contents of `setup_database.sql`
-4. Click "Run"
+## Quick Start - Run the App
 
-#### Option B: Using Python Notebook
-1. Create a new Python notebook in Databricks
-2. Copy this code:
+### Step 1: Create a Lakebase Autoscaling Project (5 minutes)
+
+```bash
+# Install dependencies
+pip install -r requirements.txt
+
+# Create the project (long-running operation, will wait for completion)
+python setup_lakebase_project.py --project-id training-app --create
+
+# View connection info
+python setup_lakebase_project.py --project-id training-app --info
+```
+
+This creates:
+- A Lakebase Autoscaling **project** named `training-app`
+- A **production** branch (auto-created)
+- A **compute endpoint** with autoscaling (auto-created)
+
+### Step 2: Set Up the Database (5 minutes)
+
+**Option A: Using the Python setup script (recommended)**
+
+```bash
+export LAKEBASE_PROJECT_ID="training-app"
+export LAKEBASE_BRANCH_ID="production"
+
+python setup_lakebase_tables.py
+```
+
+**Option B: Using a Databricks Python Notebook**
 
 ```python
-import psycopg2
-from psycopg2.extras import RealDictCursor
+from databricks.sdk import WorkspaceClient
 
-# Lakebase connection configuration
-TOKEN = 'eyJraWQiOiI2NDZiZWZkNGY5NjYwMTdiNjk1MjRjOTRlMjcxNzljY2YyZmRlZDU1ZGJiMzQ5N2UwZjEwM2EwMzljZjI2ODU3IiwidHlwIjoiYXQrand0IiwiYWxnIjoiUlMyNTYifQ.eyJjbGllbnRfaWQiOiJkYXRhYnJpY2tzLXNlc3Npb24iLCJzY29wZSI6ImlhbS5jdXJyZW50LXVzZXI6cmVhZCBpYW0uZ3JvdXBzOnJlYWQgaWFtLnNlcnZpY2UtcHJpbmNpcGFsczpyZWFkIGlhbS51c2VyczpyZWFkIiwiaWRtIjoiRUFBPSIsImlzcyI6Imh0dHBzOi8vZTItZGVtby1maWVsZC1lbmcuY2xvdWQuZGF0YWJyaWNrcy5jb20vb2lkYyIsImF1ZCI6IjE0NDQ4MjgzMDU4MTA0ODUiLCJzdWIiOiJzdXJ5YXNhaS50dXJhZ2FAZGF0YWJyaWNrcy5jb20iLCJpYXQiOjE3NjM3NDAxMjgsImV4cCI6MTc2Mzc0MzcyOCwianRpIjoiN2VkYTk5ZTAtNWI2NC00NWVjLTkyZmQtYjAzOTlmMmIxNTU2In0.oaSX4wnqF0Je-H781pYT_nRdl99bo9PWcu5TMqcJY0-i8M1UugiN5_EM2i1aWrLjIXdBmlIdF-NdBVeBSUNgOy5z_RNg21b0H8gkzS6Gw0nnv4uqqFizLcjMkstnt9Xp2-h4kmTK7DZ5Jfr4Wl4nQKSHnII3d6uOHp4srUkc3C7HtzBcmzZON1D2Capc-JSEwytU5eGzVpZiXegfdbcjxXHNOcyY_HD6wJYRfMbdJeFqX236mVtVMYSsgyiIDTWvDF9fmYM-Z_IKaB1MFMm2O19-BFqP4MN-Wbt3H2g2U8KdPHTf-85nrd7ylVIFno3iNJwfzbq0NMoGF-G_sZiy4Q'
+w = WorkspaceClient()
 
-conn = psycopg2.connect(
-    host='instance-868832b3-5ee5-4d06-a412-b5d13e28d853.database.cloud.databricks.com',
+# Discover endpoint
+endpoints = list(w.postgres.list_endpoints(
+    parent="projects/training-app/branches/production"
+))
+endpoint = w.postgres.get_endpoint(name=endpoints[0].name)
+host = endpoint.status.hosts.host
+
+# Generate credential
+cred = w.postgres.generate_database_credential(endpoint=endpoints[0].name)
+username = w.current_user.me().user_name
+
+# Connect and setup
+import psycopg
+
+conn = psycopg.connect(
+    host=host,
     database='databricks_postgres',
-    user='token',
-    password=TOKEN,
+    user=username,
+    password=cred.token,
     port=5432,
     sslmode='require'
 )
@@ -84,7 +107,7 @@ conn = psycopg2.connect(
 cursor = conn.cursor()
 
 # Read and execute setup script
-with open('/Workspace/Users/suryasai.turaga@databricks.com/lakebase-training/setup_database.sql', 'r') as f:
+with open('setup_database.sql', 'r') as f:
     sql_script = f.read()
 
 cursor.execute(sql_script)
@@ -99,7 +122,7 @@ cursor.execute("""
 """)
 result = cursor.fetchone()
 
-print(f"✅ Database setup completed!")
+print(f"Database setup completed!")
 print(f"   - Users: {result[0]}")
 print(f"   - Products: {result[1]}")
 print(f"   - Orders: {result[2]}")
@@ -108,161 +131,144 @@ cursor.close()
 conn.close()
 ```
 
-3. Run the cell
+**Option C: Using SQL Editor**
 
-### Step 2: Install Dependencies (2 minutes)
+1. Go to: https://fe-vm-hls-amer.cloud.databricks.com/sql/editor
+2. Connect to your Lakebase Autoscaling endpoint
+3. Copy and paste the contents of `setup_database.sql`
+4. Click "Run"
 
-In a Databricks notebook, run:
+### Step 3: Run the App (1 minute)
 
-```python
-%pip install dash==2.14.2 dash-bootstrap-components==1.5.0 plotly==5.18.0 psycopg2-binary==2.9.9
+```bash
+export LAKEBASE_PROJECT_ID="training-app"
+export LAKEBASE_BRANCH_ID="production"
+
+python dash_app.py
 ```
 
-### Step 3: Run the Dash App (1 minute)
-
-1. Navigate to: `/Repos/suryasai.turaga@databricks.com/lakebase-training/`
-2. Open: `dash_app.py`
-3. Click: **"Run"**
-4. The app will start on port 8080
-5. Databricks will provide you a URL to access the dashboard
+Access at http://localhost:8080
 
 ---
 
-## 🎨 What You'll See
+## What You'll See
 
-Once the app is running, you'll experience:
+### Dashboard Features
+1. **Dashboard Tab** - Animated metric cards, charts, real-time activity
+2. **Data Entry Tab** - Add products and users with form validation
+3. **Create Order Tab** - Multi-table transactions with JSONB addresses
+4. **Bulk Import Tab** - CSV upload with preview
+5. **Audit Trail Tab** - Real-time change tracking via triggers
+6. **Query Builder Tab** - Pre-built and custom SQL queries
+7. **Vector Search Tab** - Semantic search demo (pg_vector)
 
-### ✨ Beautiful Framer Motion-Style Animations
-- Smooth fadeIn effects for page loads
-- SlideIn animations for navigation tabs
-- ScaleIn effects for metric cards
-- Hover animations with lift and shadow
-- Purple gradient theme (#667eea → #764ba2)
+### Connection Status
 
-### 📊 Complete Dashboard Features
-1. **Dashboard Tab**
-   - 4 animated metric cards (users, products, orders, revenue)
-   - Product inventory bar chart
-   - Revenue trend line chart
-   - Recent orders table with auto-refresh
-
-2. **Data Entry Tab**
-   - Add products form with validation
-   - Add users form with JSONB metadata
-   - Smooth form animations
-
-3. **Query Builder Tab**
-   - Sample pre-built queries
-   - Custom SQL editor
-   - Results display with CSV download
-
-4. **Vector Search Tab**
-   - Semantic search demo
-   - Similarity scoring
-   - Hybrid search options
-
-5. **API Testing Tab**
-   - HTTP request builder
-   - Response viewer
-   - PostgREST endpoint testing
+The app shows connection status at the top:
+- **"Connected to Lakebase (Autoscaling): ep-XXXXX... / databricks_postgres | Project: training-app/production"** - Autoscaling mode
+- **"Connected to Lakebase (Provisioned): instance-XXXXX... / databricks_postgres"** - Legacy mode
 
 ---
 
-## 🗄️ Database Schema Created
-
-The setup script creates:
+## Database Schema Created
 
 ### Tables
 - **ecommerce.users** - User accounts with JSONB metadata
 - **ecommerce.products** - Product catalog with tags and categories
-- **ecommerce.orders** - Order management with addresses
-- **ecommerce.order_items** - Order line items with subtotals
+- **ecommerce.orders** - Order management with JSONB addresses
+- **ecommerce.order_items** - Order line items with computed subtotals
+- **ecommerce.audit_log** - Change tracking via triggers
 
 ### Sample Data
-- 3 users (including admin)
-- 8 products across categories
-- 3 sample orders with line items
-
-### Indexes
-- Email and username lookups
-- Product category filtering
-- Order user relationships
-- JSONB metadata search
+- 5 users (including admin and vendor roles)
+- 10 products across categories (Electronics, Accessories, Books)
+- 2 sample orders with line items
 
 ---
 
-## 🔧 Configuration Details
+## Configuration Details
 
-### app.yaml (Already Configured)
+### app.yaml
 ```yaml
 command:
   - python
   - dash_app.py
 
 env:
-  - name: LAKEBASE_HOST
-    value: "instance-868832b3-5ee5-4d06-a412-b5d13e28d853.database.cloud.databricks.com"
-  - name: LAKEBASE_DB
+  - name: LAKEBASE_PROJECT_ID
+    value: "training-app"
+  - name: LAKEBASE_BRANCH_ID
+    value: "production"
+  - name: PGDATABASE
     value: "databricks_postgres"
-  - name: LAKEBASE_USER
-    value: "suryasai.turaga@databricks.com"
-  - name: LAKEBASE_PASSWORD
-    value: "[YOUR_TOKEN_HERE]"  # Already set
-  - name: LAKEBASE_PORT
+  - name: PGPORT
     value: "5432"
+  - name: PGSSLMODE
+    value: "require"
+  - name: PGAPPNAME
+    value: "lakebase-end-to-end-training"
 ```
 
 ---
 
-## 📝 Alternative: Deploy as Databricks App
-
-If you want to deploy as a permanent Databricks App:
+## Deploy as Databricks App
 
 ```bash
-cd /Workspace/Users/suryasai.turaga@databricks.com/lakebase-training
+# Validate
+databricks bundle validate
 
-# Note: workspace has 300 apps limit
-# You may need to delete an old app first:
-# databricks apps list
-# databricks apps delete <old-app-name>
+# Deploy
+databricks bundle deploy
 
-# Then deploy
-databricks apps create lakebase-training --description "Lakebase Training Dashboard"
-databricks apps deploy lakebase-training --source-code-path .
+# Run
+databricks bundle run lakebase_training_dashboard
+
+# Check status
+databricks apps list
+
+# View logs
+databricks apps logs lakebase-training-app
 ```
 
 ---
 
-## 🔗 Quick Access Links
+## Quick Access Links
 
 | Resource | Link |
 |----------|------|
 | **Databricks Workspace** | https://fe-vm-hls-amer.cloud.databricks.com/ |
 | **Repos Location** | `/Repos/suryasai.turaga@databricks.com/lakebase-training` |
-| **Workspace Location** | `/Workspace/Users/suryasai.turaga@databricks.com/lakebase-training` |
-| **GitHub Repository** | https://github.com/suryasai87/lakebase-training-app |
+| **GitHub Repository** | https://github.com/suryasai87/lakebase_end_to_end_training |
 
 ---
 
-## 🐛 Troubleshooting
+## Troubleshooting
 
-### Issue: Database Connection Error
-**Solution**: The token is already configured in `app.yaml`. If it expires, you'll need to generate a new one.
+### Issue: LAKEBASE_PROJECT_ID not set
+**Solution**: Set the environment variable: `export LAKEBASE_PROJECT_ID="training-app"`
+
+### Issue: No compute endpoints found
+**Solution**: Verify the project exists: `python setup_lakebase_project.py --list`
+
+### Issue: Connection timeout (scale-to-zero)
+**Solution**: The app retries with exponential backoff. First connection after idle may take 200-500ms.
 
 ### Issue: Tables Already Exist
-**Solution**: The setup script uses `IF NOT EXISTS`, so it's safe to run multiple times.
+**Solution**: The setup scripts use `IF NOT EXISTS`, so they're safe to run multiple times.
 
 ### Issue: Module Not Found
-**Solution**: Run the pip install command in Step 2 to install all dependencies.
+**Solution**: Run `pip install -r requirements.txt` to install all dependencies.
 
-### Issue: App Won't Start
-**Solution**: Make sure you run the app from a Databricks environment (Notebook or Repos), not locally.
+### Issue: Permission Denied
+**Solution**: Grant permissions to the service principal:
+```sql
+GRANT USAGE ON SCHEMA ecommerce TO "<service-principal-id>";
+GRANT ALL ON ALL TABLES IN SCHEMA ecommerce TO "<service-principal-id>";
+```
 
 ---
 
-## 📚 Sample Queries to Try
-
-Once the database is set up, try these queries in the Query Builder:
+## Sample Queries to Try
 
 ### Top Selling Products
 ```sql
@@ -285,42 +291,16 @@ GROUP BY u.user_id, u.username
 ORDER BY lifetime_value DESC
 ```
 
-### Low Stock Alert
+### Audit Log Summary
 ```sql
-SELECT name, stock_quantity, category
-FROM ecommerce.products
-WHERE stock_quantity < 10
-ORDER BY stock_quantity ASC
+SELECT table_name, operation, COUNT(*) as count,
+       MAX(created_at) as last_activity
+FROM ecommerce.audit_log
+GROUP BY table_name, operation
+ORDER BY last_activity DESC
 ```
 
 ---
 
-## ✅ Deployment Checklist
-
-- [x] GitHub repository cloned to Databricks Repos
-- [x] All files deployed to Workspace
-- [x] Database connection configured in app.yaml
-- [x] Authentication token set up
-- [x] Database setup script ready
-- [x] Documentation provided
-- [ ] **Run database setup script** (Step 1 above)
-- [ ] **Install dependencies** (Step 2 above)
-- [ ] **Start the Dash app** (Step 3 above)
-
----
-
-## 🎉 You're Ready to Go!
-
-Everything is set up and ready. Just follow the 3 quick steps above to:
-1. Set up your database
-2. Install dependencies
-3. Run the app
-
-Your beautiful Dash dashboard with Framer Motion animations awaits! 🚀
-
----
-
-**Deployment Date**: November 21, 2025
+**Last Updated**: February 2026
 **Workspace**: https://fe-vm-hls-amer.cloud.databricks.com/
-**Deployed By**: Claude Code
-**Repository**: https://github.com/suryasai87/lakebase-training-app

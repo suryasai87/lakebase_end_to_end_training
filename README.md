@@ -1,15 +1,27 @@
-# Databricks Lakebase End-to-End Training Application
+# Databricks Lakebase Autoscaling End-to-End Training Application
 
-A comprehensive training application demonstrating **advanced Databricks Lakebase (PostgreSQL)** features including audit trails, bulk imports, real-time insert verification, and multi-table transactions.
+A comprehensive training application demonstrating **Databricks Lakebase Autoscaling** features including project/branch/endpoint hierarchy, autoscaling compute (0.5-112 CU), scale-to-zero, OAuth credential generation via `w.postgres` SDK, audit trails, bulk imports, and multi-table transactions.
 
 **Live Demo:** [https://lakebase-end-to-end-training-1602460480284688.aws.databricksapps.com](https://lakebase-end-to-end-training-1602460480284688.aws.databricksapps.com)
 
 ---
 
-## What's New in This Version
+## What's New in v3.0 (Lakebase Autoscaling)
 
-This repository extends the [basic lakebase_training](https://github.com/suryasai87/lakebase_training) with advanced features:
+This version migrates from **Lakebase Provisioned** to **Lakebase Autoscaling**:
 
+| Feature | Provisioned (v2.0) | Autoscaling (v3.0) |
+|---------|--------------------|--------------------|
+| **SDK** | `w.database` | `w.postgres` |
+| **Top Resource** | Instance | Project > Branches > Endpoints |
+| **Hostname** | `instance-UUID.database.cloud.databricks.com` | `ep-XXXXX.cloud.databricks.com` |
+| **Capacity** | Fixed CU_1/CU_2/CU_4/CU_8 (16 GB/CU) | 0.5-112 CU autoscaling (2 GB/CU) |
+| **Scale-to-Zero** | Not supported | Configurable per endpoint |
+| **Branching** | Not supported | Full branching (production, dev, staging) |
+| **Token Generation** | `w.config.oauth_token()` | `w.postgres.generate_database_credential()` |
+| **Operations** | Synchronous | Long-running with `.wait()` |
+
+### Additional Features
 | Feature | Description |
 |---------|-------------|
 | **Create Order** | Multi-table transactions with foreign key relationships |
@@ -25,13 +37,14 @@ This repository extends the [basic lakebase_training](https://github.com/suryasa
 1. [Quick Start](#quick-start)
 2. [Prerequisites](#prerequisites)
 3. [Step-by-Step Setup Guide](#step-by-step-setup-guide)
-4. [Application Features](#application-features)
-5. [How to Verify Inserts in Lakebase](#how-to-verify-inserts-in-lakebase)
-6. [Audit Trail Deep Dive](#audit-trail-deep-dive)
-7. [Key Lakebase Features Demonstrated](#key-lakebase-features-demonstrated)
-8. [Deployment](#deployment)
-9. [Troubleshooting](#troubleshooting)
-10. [Training Documentation](#training-documentation)
+4. [Lakebase Autoscaling Concepts](#lakebase-autoscaling-concepts)
+5. [Application Features](#application-features)
+6. [How to Verify Inserts in Lakebase](#how-to-verify-inserts-in-lakebase)
+7. [Audit Trail Deep Dive](#audit-trail-deep-dive)
+8. [Key Lakebase Features Demonstrated](#key-lakebase-features-demonstrated)
+9. [Deployment](#deployment)
+10. [Troubleshooting](#troubleshooting)
+11. [Training Documentation](#training-documentation)
 
 ---
 
@@ -45,19 +58,17 @@ cd lakebase_end_to_end_training
 # Install dependencies
 pip install -r requirements.txt
 
-# Set environment variables (for local development)
-# Note: When deployed to Databricks Apps, use the Service Principal ID as PGUSER
-export PGHOST="instance-<your-instance-id>.database.cloud.databricks.com"
-export PGDATABASE="databricks_postgres"
-export PGUSER="<your-service-principal-id>"  # e.g., 1e6260c5-f44b-4d66-bb19-ccd360f98b36
-export PGPORT="5432"
-export PGSSLMODE="require"
+# Step 1: Create a Lakebase Autoscaling project (one-time setup)
+python setup_lakebase_project.py --project-id training-app --create
 
-# Run the database setup (creates tables, triggers, and sample data)
-# Connect to your Lakebase instance and run:
-psql -f setup_database.sql
+# Step 2: Set environment variables
+export LAKEBASE_PROJECT_ID="training-app"
+export LAKEBASE_BRANCH_ID="production"
 
-# Run the application
+# Step 3: Run database table setup
+python setup_lakebase_tables.py
+
+# Step 4: Run the application
 python dash_app.py
 ```
 
@@ -67,7 +78,7 @@ python dash_app.py
 
 Before starting, ensure you have:
 
-1. **Databricks Workspace** with Lakebase enabled
+1. **Databricks Workspace** with Lakebase Autoscaling enabled
 2. **Python 3.9+** installed
 3. **Databricks CLI** configured
 4. **Git** for version control
@@ -89,31 +100,88 @@ databricks configure
 
 ## Step-by-Step Setup Guide
 
-### Step 1: Create a Lakebase Instance
+### Step 1: Create a Lakebase Autoscaling Project
+
+Lakebase Autoscaling uses a **Project > Branch > Endpoint** hierarchy:
+
+```
+Project (training-app)
+├── Branch: production (auto-created)
+│   └── Compute Endpoint (auto-created, autoscaling)
+└── Branch: development (optional)
+    └── Compute Endpoint (independent scaling)
+```
+
+**Option A: Using the setup script (recommended)**
+
+```bash
+# Create project with default settings
+python setup_lakebase_project.py --project-id training-app --create
+
+# View connection info
+python setup_lakebase_project.py --project-id training-app --info
+
+# Optionally create a development branch
+python setup_lakebase_project.py --project-id training-app --create-dev-branch
+
+# Optionally resize compute (default: 0.5-4.0 CU)
+python setup_lakebase_project.py --project-id training-app --resize --min-cu 1.0 --max-cu 4.0
+```
+
+**Option B: Using the Databricks UI**
 
 1. Navigate to your Databricks workspace
-2. Go to **Compute** → **OLTP Databases**
-3. Click **Create Database**
+2. Go to **SQL** > **OLTP Databases**
+3. Click **Create Database** > **Autoscaling**
 4. Configure:
-   - Name: `training-lakebase`
-   - Region: `us-east-2` (or your preferred region)
-5. Note the connection details:
-   - Host: `instance-XXXXX.database.cloud.databricks.com`
-   - Port: `5432`
-   - Database: `databricks_postgres`
+   - Name: `training-app`
+   - PostgreSQL version: 17
 
-### Step 2: Get OAuth Token
+**Option C: Using the Databricks Python SDK**
 
 ```python
-from databricks import sdk
+from databricks.sdk import WorkspaceClient
+from databricks.sdk.service.postgres import Project, ProjectSpec
 
-# Initialize workspace client
-workspace_client = sdk.WorkspaceClient()
+w = WorkspaceClient()
 
-# Get OAuth token (valid for 1 hour)
-token = workspace_client.config.oauth_token().access_token
-print(f"Token: {token}")
+# Create project (long-running operation)
+operation = w.postgres.create_project(
+    project=Project(spec=ProjectSpec(
+        display_name="Lakebase Training: training-app",
+        pg_version="17",
+    )),
+    project_id="training-app",
+)
+result = operation.wait()
+print(f"Project created: {result.name}")
 ```
+
+### Step 2: Generate Credentials
+
+Lakebase Autoscaling uses `w.postgres.generate_database_credential()` for token generation:
+
+```python
+from databricks.sdk import WorkspaceClient
+
+w = WorkspaceClient()
+
+# List endpoints for your project
+endpoints = list(w.postgres.list_endpoints(
+    parent="projects/training-app/branches/production"
+))
+
+# Generate credential (valid for 1 hour)
+cred = w.postgres.generate_database_credential(endpoint=endpoints[0].name)
+print(f"Token: {cred.token}")
+
+# Get endpoint host
+endpoint = w.postgres.get_endpoint(name=endpoints[0].name)
+print(f"Host: {endpoint.status.hosts.host}")
+print(f"Username: {w.current_user.me().user_name}")
+```
+
+> **Note:** The app handles credential generation automatically. You only need this for manual database access (psql, DBeaver, etc.).
 
 ### Step 3: Clone and Configure Repository
 
@@ -132,41 +200,38 @@ pip install -r requirements.txt
 
 ### Step 4: Set Environment Variables
 
-**Important:** When deploying to Databricks Apps, the app runs as a Service Principal. You must use the Service Principal ID as the `PGUSER`, not "token" or your email address.
+**For Autoscaling (recommended):**
 
 ```bash
-# For Databricks Apps deployment
-export PGHOST="instance-<instance-id>.database.cloud.databricks.com"
-export PGDATABASE="databricks_postgres"
-export PGUSER="<service-principal-id>"  # e.g., 1e6260c5-f44b-4d66-bb19-ccd360f98b36
-export PGPORT="5432"
-export PGSSLMODE="require"
-export PGAPPNAME="lakebase-end-to-end-training"
+export LAKEBASE_PROJECT_ID="training-app"
+export LAKEBASE_BRANCH_ID="production"
 ```
 
-**Finding Your Service Principal ID:**
-1. Check your app's OAuth token identity in the logs
-2. Or find it in the Databricks Admin Console under Service Principals
+The app discovers the endpoint host and generates credentials automatically using the `w.postgres` SDK.
 
-**Grant Permissions to Service Principal:**
-```sql
--- Grant access to the service principal
-GRANT USAGE ON SCHEMA ecommerce TO "<service-principal-id>";
-GRANT SELECT ON ALL TABLES IN SCHEMA ecommerce TO "<service-principal-id>";
-ALTER DEFAULT PRIVILEGES IN SCHEMA ecommerce GRANT SELECT ON TABLES TO "<service-principal-id>";
+**For legacy/provisioned mode (backward compatible):**
+
+```bash
+export PGHOST="instance-<instance-id>.database.cloud.databricks.com"
+export PGUSER="<service-principal-id>"
+export PGDATABASE="databricks_postgres"
+export PGPORT="5432"
+export PGSSLMODE="require"
 ```
 
 ### Step 5: Run Database Setup
 
-Connect to your Lakebase instance and run the setup script:
-
 ```bash
-# Using psql
-psql "postgresql://token:$PGPASSWORD@$PGHOST:5432/databricks_postgres?sslmode=require" \
-  -f setup_database.sql
+# Using the Python setup script (recommended - handles auth automatically)
+python setup_lakebase_tables.py
+
+# Or using psql with manual token
+python setup_lakebase_project.py --project-id training-app --info
+# Copy the connection string from the output, then:
+psql "<connection-string>" -f setup_database.sql
 ```
 
-This script creates:
+This creates:
 - `ecommerce` schema
 - `users`, `products`, `orders`, `order_items` tables
 - `audit_log` table
@@ -185,32 +250,74 @@ python dash_app.py
 
 ---
 
+## Lakebase Autoscaling Concepts
+
+### Resource Hierarchy
+
+```
+Workspace
+└── Project (e.g., "training-app")
+    ├── Branch: production (auto-created with project)
+    │   ├── Compute Endpoint (autoscaling, 0.5-112 CU)
+    │   ├── Roles & Permissions
+    │   └── Databases (databricks_postgres)
+    ├── Branch: development (copy-on-write from production)
+    │   └── Compute Endpoint (independent scaling)
+    └── Branch: staging
+        └── Compute Endpoint (independent scaling)
+```
+
+### Autoscaling Compute
+
+- **Range:** 0.5 to 112 Compute Units (CU)
+- **Memory:** 2 GB per CU (e.g., 4 CU = 8 GB RAM)
+- **Constraint:** `max_cu - min_cu` cannot exceed 8 CU
+- **Scale-to-Zero:** Endpoint suspends after idle period, wakes in 200-500ms
+
+### Branching
+
+Branches provide copy-on-write database clones:
+- **Production:** Main branch, auto-created with project
+- **Development:** Create from production for testing
+- **Staging:** Pre-production validation
+- Each branch has independent compute endpoints
+
+### Scale-to-Zero
+
+- Endpoints automatically suspend when idle
+- First connection after suspension takes 200-500ms to wake
+- Session context (temp tables, prepared statements) is lost after suspension
+- The app includes retry logic for cold starts
+
+---
+
 ## Application Features
 
 ### 1. Dashboard
 - Real-time metrics (users, products, orders, revenue)
 - Product inventory bar chart
 - Revenue trend line chart
-- **Real-Time Database Activity panel** (NEW)
+- **Real-Time Database Activity panel**
+- Connection status showing Autoscaling/Provisioned mode
 
 ### 2. Data Entry
 - Add products with categories, tags, and descriptions
 - Add users with role metadata
 - Form validation
 
-### 3. Create Order (NEW)
+### 3. Create Order
 - Select customer from dropdown
 - Enter shipping address (stored as JSONB)
 - Multi-table transaction handling
 - Demonstrates `RETURNING` clause
 
-### 4. Bulk Import (NEW)
+### 4. Bulk Import
 - Upload CSV files
 - Preview data before import
 - Download template
 - Batch insert with error handling
 
-### 5. Audit Trail (NEW)
+### 5. Audit Trail
 - Filter by table (products, users, orders)
 - Filter by operation (INSERT, UPDATE, DELETE)
 - Configurable refresh rate
@@ -246,8 +353,6 @@ The Dashboard includes a **Real-Time Database Activity** panel that shows the la
 
 ### Method 3: Using the Query Builder
 
-Run this query:
-
 ```sql
 SELECT
     table_name,
@@ -264,7 +369,11 @@ LIMIT 20;
 ### Method 4: Direct Database Query
 
 ```bash
-psql "postgresql://token:$TOKEN@$PGHOST:5432/databricks_postgres?sslmode=require"
+# Get connection info
+python setup_lakebase_project.py --project-id training-app --info
+
+# Connect with psql (use the connection string from --info output)
+psql "host=<endpoint-host> dbname=databricks_postgres user=<username> password=<token> sslmode=require"
 ```
 
 ```sql
@@ -335,60 +444,49 @@ CREATE TRIGGER trg_audit_products
     FOR EACH ROW EXECUTE FUNCTION ecommerce.audit_products();
 ```
 
-### Querying the Audit Trail
-
-```sql
--- Summary by table and operation
-SELECT table_name, operation, COUNT(*) as count,
-       MAX(created_at) as last_activity
-FROM ecommerce.audit_log
-GROUP BY table_name, operation
-ORDER BY last_activity DESC;
-
--- Find all changes to a specific product
-SELECT * FROM ecommerce.audit_log
-WHERE table_name = 'products'
-  AND record_id = 1
-ORDER BY created_at DESC;
-
--- Compare old vs new data for updates
-SELECT
-    record_id,
-    old_data->>'price' as old_price,
-    new_data->>'price' as new_price,
-    created_at
-FROM ecommerce.audit_log
-WHERE table_name = 'products'
-  AND operation = 'UPDATE';
-```
-
 ---
 
-## Key Lakebase Features Demonstrated
+## Key Lakebase Autoscaling Features Demonstrated
 
-### 1. PostgreSQL-Compatible Database Operations
+### 1. Autoscaling Endpoint Discovery
 ```python
-conn_string = (
-    f"dbname={os.getenv('PGDATABASE')} "
-    f"user={os.getenv('PGUSER')} "
-    f"password={postgres_password} "
-    f"host={os.getenv('PGHOST')} "
-    f"sslmode=require"
-)
+from databricks.sdk import WorkspaceClient
+
+w = WorkspaceClient()
+
+# Discover endpoint from project/branch
+endpoints = list(w.postgres.list_endpoints(
+    parent=f"projects/{project_id}/branches/{branch_id}"
+))
+endpoint = w.postgres.get_endpoint(name=endpoints[0].name)
+host = endpoint.status.hosts.host
 ```
 
-### 2. OAuth Token Authentication
+### 2. Credential Generation (replaces `oauth_token()`)
 ```python
-from databricks import sdk
-workspace_client = sdk.WorkspaceClient()
-postgres_password = workspace_client.config.oauth_token().access_token
+# Generate database credential for the autoscaling endpoint
+cred = w.postgres.generate_database_credential(endpoint=endpoints[0].name)
+password = cred.token  # Valid for 1 hour
+username = w.current_user.me().user_name
 ```
-- Automatic token refresh every 15 minutes
 
-### 3. Connection Pooling
+### 3. Connection with Scale-to-Zero Retry
 ```python
-from psycopg_pool import ConnectionPool
-connection_pool = ConnectionPool(conn_string, min_size=2, max_size=10)
+import psycopg
+
+def get_db_connection(retries=3):
+    for attempt in range(retries):
+        try:
+            return psycopg.connect(
+                host=host, dbname="databricks_postgres",
+                user=username, password=token,
+                sslmode="require", connect_timeout=10,
+            )
+        except Exception as e:
+            if attempt < retries - 1:
+                time.sleep((attempt + 1) * 2)  # Exponential backoff
+            else:
+                raise
 ```
 
 ### 4. Advanced Data Types
@@ -418,21 +516,24 @@ except Exception as e:
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                    Databricks Apps Platform                      │
-├─────────────────────────────────────────────────────────────────┤
-│  ┌─────────────────┐    ┌─────────────────┐    ┌─────────────┐ │
-│  │   Dash App      │    │   OAuth Token   │    │  Lakebase   │ │
-│  │  (dash_app.py)  │───▶│   Management    │───▶│  PostgreSQL │ │
-│  │                 │    │                 │    │             │ │
-│  │  - Dashboard    │    │  - Auto-refresh │    │  - ecommerce│ │
-│  │  - Data Entry   │    │  - SDK Client   │    │    schema   │ │
-│  │  - Create Order │    │                 │    │  - audit_log│ │
-│  │  - Bulk Import  │    │                 │    │  - triggers │ │
-│  │  - Audit Trail  │    │                 │    │             │ │
-│  │  - Query Builder│    │                 │    │             │ │
-│  └─────────────────┘    └─────────────────┘    └─────────────┘ │
-└─────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────┐
+│                       Databricks Apps Platform                           │
+├──────────────────────────────────────────────────────────────────────────┤
+│  ┌─────────────────┐   ┌─────────────────────┐   ┌──────────────────┐  │
+│  │   Dash App      │   │  Credential Manager │   │  Lakebase        │  │
+│  │  (dash_app.py)  │──▶│  (w.postgres SDK)   │──▶│  Autoscaling     │  │
+│  │                 │   │                     │   │                  │  │
+│  │  - Dashboard    │   │  - Endpoint         │   │  Project:        │  │
+│  │  - Data Entry   │   │    discovery        │   │   training-app   │  │
+│  │  - Create Order │   │  - generate_        │   │  Branch:         │  │
+│  │  - Bulk Import  │   │    database_        │   │   production     │  │
+│  │  - Audit Trail  │   │    credential()     │   │  Endpoint:       │  │
+│  │  - Query Builder│   │  - Token refresh    │   │   0.5-4 CU       │  │
+│  │                 │   │    (50 min cycle)   │   │  - ecommerce     │  │
+│  │                 │   │  - Scale-to-zero    │   │    schema        │  │
+│  │                 │   │    retry logic      │   │  - audit_log     │  │
+│  └─────────────────┘   └─────────────────────┘   └──────────────────┘  │
+└──────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -455,18 +556,38 @@ databricks bundle run lakebase_training_dashboard
 databricks apps list
 
 # View logs
-databricks apps logs lakebase-end-to-end-training
+databricks apps logs lakebase-training-app
 ```
 
 ### Required Files
 
 | File | Purpose |
 |------|---------|
-| `app.yaml` | Databricks App entry point |
+| `app.yaml` | Databricks App config (env vars for project/branch) |
 | `databricks.yml` | DAB bundle configuration |
-| `dash_app.py` | Main application |
-| `setup_database.sql` | Database schema with triggers |
+| `dash_app.py` | Main application with autoscaling connection logic |
+| `setup_lakebase_project.py` | Create/manage Lakebase Autoscaling projects |
+| `setup_lakebase_tables.py` | Create database tables, triggers, sample data |
+| `setup_database.sql` | Raw SQL for database schema with triggers |
 | `requirements.txt` | Python dependencies |
+
+### app.yaml Configuration
+
+```yaml
+command:
+  - python
+  - dash_app.py
+
+env:
+  - name: LAKEBASE_PROJECT_ID
+    value: "training-app"
+  - name: LAKEBASE_BRANCH_ID
+    value: "production"
+  - name: PGDATABASE
+    value: "databricks_postgres"
+```
+
+> **Note:** No hardcoded hostname or credentials. The app discovers the endpoint and generates tokens at runtime using the Databricks SDK.
 
 ---
 
@@ -474,13 +595,15 @@ databricks apps logs lakebase-end-to-end-training
 
 ```
 lakebase_end_to_end_training/
-├── dash_app.py                      # Main enhanced application
-├── app.py                           # Streamlit version (alternative)
+├── dash_app.py                      # Main application (autoscaling-aware)
+├── setup_lakebase_project.py        # Create/manage Lakebase projects (NEW)
+├── setup_lakebase_tables.py         # Database table setup (autoscaling-aware)
 ├── setup_database.sql               # Schema with audit trail and triggers
 ├── requirements.txt                 # Python dependencies
 ├── app.yaml                         # Databricks App config
 ├── databricks.yml                   # DAB bundle config
 ├── README.md                        # This file
+├── SETUP_GUIDE.md                   # Detailed setup guide
 └── lakebase_training_document/      # Training materials
     └── Databricks_Lakebase_Complete_Training_Guide.md
 ```
@@ -491,78 +614,78 @@ lakebase_end_to_end_training/
 
 ### Common Issues
 
-**1. OAuth token identity mismatch**
+**1. LAKEBASE_PROJECT_ID not set**
 ```
-Error: OAuth token identity 'xxxx-xxxx' did not match the security label configured for role 'user@email.com'
+Error: LAKEBASE_PROJECT_ID must be set
 ```
-**Solution:** The PGUSER must match the OAuth token identity. When running as a Databricks App, use the Service Principal ID as PGUSER, not your email or "token".
+**Solution:** Set the environment variable:
+```bash
+export LAKEBASE_PROJECT_ID="training-app"
+```
 
-**2. Role does not exist**
+**2. No compute endpoints found**
 ```
-Error: FATAL: role "token" does not exist
+Error: No compute endpoints found for project=training-app, branch=production
 ```
-**Solution:** Use the Service Principal ID as PGUSER. The OAuth token authenticates the identity, but PGUSER specifies which role to connect as.
+**Solution:** Verify the project exists and has a running endpoint:
+```bash
+python setup_lakebase_project.py --list
+```
 
-**3. Permission denied on table**
+**3. Scale-to-zero cold start timeout**
+```
+Error: connection timeout / connection refused
+```
+**Solution:** The app includes retry logic with exponential backoff. If the endpoint is suspended, the first connection may take 200-500ms. Increase retries if needed.
+
+**4. Compute endpoint suspended**
+```
+Error: endpoint is suspended
+```
+**Solution:** The endpoint will auto-wake on the next connection attempt. The app retries automatically.
+
+**5. OAuth token identity mismatch**
+```
+Error: OAuth token identity 'xxxx-xxxx' did not match the security label
+```
+**Solution:** When using autoscaling, the credential is generated via `w.postgres.generate_database_credential()` which handles identity correctly. If using legacy mode, ensure PGUSER matches the token identity.
+
+**6. Permission denied on table**
 ```
 Error: permission denied for table users
 ```
 **Solution:** Grant permissions to the service principal:
 ```sql
 GRANT USAGE ON SCHEMA ecommerce TO "<service-principal-id>";
-GRANT SELECT ON ALL TABLES IN SCHEMA ecommerce TO "<service-principal-id>";
+GRANT ALL ON ALL TABLES IN SCHEMA ecommerce TO "<service-principal-id>";
 ```
 
-**4. JSONB column display error in DataTable**
+**7. JSONB column display error in DataTable**
 ```
 Error: Expected string, number, boolean - got dict/list
 ```
-**Solution:** Convert JSONB columns to strings before displaying in Dash DataTable:
-```python
-def convert_for_datatable(df):
-    for col in df.columns:
-        if df[col].apply(lambda x: isinstance(x, (dict, list))).any():
-            df[col] = df[col].apply(lambda x: json.dumps(x) if isinstance(x, (dict, list)) else x)
-    return df
-```
+**Solution:** The app converts JSONB columns to strings before displaying in Dash DataTable.
 
-**5. Audit log table not found**
+**8. macOS DNS resolution failure**
 ```
-Error: relation "ecommerce.audit_log" does not exist
+Error: could not translate host name to address
 ```
-**Solution:** Run `setup_database.sql` to create all tables including audit_log.
+**Solution:** The app includes a macOS DNS workaround using `dig` and `hostaddr`. This is handled automatically.
 
-**6. Triggers not working**
-```
-No audit records appearing
-```
-**Solution:** Verify triggers exist:
-```sql
-SELECT trigger_name, event_manipulation, action_statement
-FROM information_schema.triggers
-WHERE trigger_schema = 'ecommerce';
-```
-
-**7. OAuth token expired**
+**9. OAuth token expired**
 ```
 Error: password authentication failed
 ```
-**Solution:** Tokens expire after 1 hour. The app automatically refreshes tokens every 15 minutes using `workspace_client.config.oauth_token()`.
+**Solution:** Tokens expire after 1 hour. The app refreshes tokens every 50 minutes automatically.
 
-**8. Connection pool exhausted**
-```
-Error: connection pool is full
-```
-**Solution:** The app uses direct connections with context managers for automatic cleanup. Restart the app if this persists.
-
-**9. 502 Bad Gateway**
+**10. 502 Bad Gateway**
 ```
 Error: 502 Bad Gateway
 ```
 **Solutions:**
 - Check app.yaml command is correct
-- Verify port matches DATABRICKS_APP_PORT
-- Check app logs: `databricks apps logs <app-name>`
+- Verify port matches DATABRICKS_APP_PORT (default: 8080)
+- Check app logs: `databricks apps logs lakebase-training-app`
 
 ---
 
@@ -610,11 +733,11 @@ This training material is provided for educational purposes.
 
 ---
 
-**Version:** 2.0
-**Last Updated:** December 2024
+**Version:** 3.0
+**Last Updated:** February 2026
 **Target Audience:** Intermediate to Advanced Developers
 **Duration:** 8 hours (1 day)
 
 ---
 
-*Built with Databricks Lakebase and Dash*
+*Built with Databricks Lakebase Autoscaling and Dash*

@@ -1,55 +1,115 @@
 #!/usr/bin/env python3
 """
-Setup Lakebase tables with audit trail for End-to-End Training App
-Run this script to create tables, triggers, and sample data in Lakebase
+Setup Lakebase Autoscaling tables with audit trail for End-to-End Training App
+
+Supports two connection modes:
+  1. Autoscaling (recommended): Set LAKEBASE_PROJECT_ID and LAKEBASE_BRANCH_ID
+     - Host and credentials are discovered automatically via w.postgres SDK
+  2. Legacy/Provisioned: Set PGHOST, PGUSER, PGPASSWORD directly
+
+Usage:
+    python setup_lakebase_tables.py
+    LAKEBASE_PROJECT_ID=my-project python setup_lakebase_tables.py
 """
 
 import os
 import sys
+import subprocess
+import socket
 import time
 
+from databricks.sdk import WorkspaceClient
+
 # Configuration
-LAKEBASE_HOST = os.getenv('PGHOST', 'instance-6b59171b-cee8-4acc-9209-6c848ffbfbfe.database.cloud.databricks.com')
-LAKEBASE_DATABASE = os.getenv('PGDATABASE', 'lakebasepoc')
-LAKEBASE_USER = os.getenv('PGUSER', 'token')
+LAKEBASE_PROJECT_ID = os.getenv('LAKEBASE_PROJECT_ID', '')
+LAKEBASE_BRANCH_ID = os.getenv('LAKEBASE_BRANCH_ID', 'production')
+LAKEBASE_DATABASE = os.getenv('PGDATABASE', 'databricks_postgres')
 LAKEBASE_PORT = os.getenv('PGPORT', '5432')
 
-def get_password():
-    """Get OAuth token from environment or Databricks SDK"""
-    # Try environment variable first
-    if os.getenv('PGPASSWORD'):
-        return os.getenv('PGPASSWORD')
+# Legacy overrides
+PGHOST_OVERRIDE = os.getenv('PGHOST', '')
+PGUSER_OVERRIDE = os.getenv('PGUSER', '')
 
-    # Try Databricks SDK
+
+def _resolve_hostname(hostname):
+    """Resolve hostname with macOS DNS workaround."""
     try:
-        from databricks import sdk
-        workspace_client = sdk.WorkspaceClient()
-        return workspace_client.config.oauth_token().access_token
-    except Exception as e:
-        print(f"Could not get OAuth token: {e}")
-        return None
+        return socket.gethostbyname(hostname)
+    except socket.gaierror:
+        pass
+    try:
+        result = subprocess.run(
+            ["dig", "+short", hostname],
+            capture_output=True, text=True, timeout=5,
+        )
+        ips = result.stdout.strip().split('\n')
+        for ip in ips:
+            if ip and not ip.startswith(';') and '.' in ip:
+                return ip
+    except Exception:
+        pass
+    return None
+
+
+def get_connection_params():
+    """Get connection parameters using Autoscaling SDK or legacy env vars."""
+    w = WorkspaceClient()
+
+    if LAKEBASE_PROJECT_ID and not PGHOST_OVERRIDE:
+        # Autoscaling mode: discover endpoint and generate credential
+        print(f"Autoscaling mode: project={LAKEBASE_PROJECT_ID}, branch={LAKEBASE_BRANCH_ID}")
+        endpoints = list(w.postgres.list_endpoints(
+            parent=f"projects/{LAKEBASE_PROJECT_ID}/branches/{LAKEBASE_BRANCH_ID}"
+        ))
+        if not endpoints:
+            print("ERROR: No compute endpoints found")
+            sys.exit(1)
+
+        endpoint = w.postgres.get_endpoint(name=endpoints[0].name)
+        host = endpoint.status.hosts.host
+        username = w.current_user.me().user_name
+
+        cred = w.postgres.generate_database_credential(endpoint=endpoints[0].name)
+        password = cred.token
+        print(f"Endpoint discovered: {host}")
+    elif PGHOST_OVERRIDE:
+        # Legacy/provisioned mode
+        host = PGHOST_OVERRIDE
+        username = PGUSER_OVERRIDE or w.current_user.me().user_name
+        password = os.getenv('PGPASSWORD', '')
+        if not password:
+            password = w.config.oauth_token().access_token
+        print(f"Legacy mode: host={host}")
+    else:
+        print("ERROR: Set LAKEBASE_PROJECT_ID or PGHOST environment variable")
+        sys.exit(1)
+
+    return host, username, password
+
 
 def setup_database():
     """Create schema, tables, audit log, and triggers"""
     import psycopg
     from psycopg.rows import dict_row
 
-    password = get_password()
-    if not password:
-        print("No password available")
-        return False
+    host, username, password = get_connection_params()
 
-    conn_string = (
+    # Resolve IP for macOS DNS workaround
+    hostaddr = _resolve_hostname(host)
+
+    conn_params = (
         f"dbname={LAKEBASE_DATABASE} "
-        f"user={LAKEBASE_USER} "
+        f"user={username} "
         f"password={password} "
-        f"host={LAKEBASE_HOST} "
+        f"host={host} "
         f"port={LAKEBASE_PORT} "
         f"sslmode=require"
     )
+    if hostaddr:
+        conn_params += f" hostaddr={hostaddr}"
 
-    print(f"Connecting to {LAKEBASE_HOST}...")
-    conn = psycopg.connect(conn_string)
+    print(f"Connecting to {host}...")
+    conn = psycopg.connect(conn_params)
     cursor = conn.cursor()
 
     # Create schema

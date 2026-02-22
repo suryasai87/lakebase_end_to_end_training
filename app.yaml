@@ -3,12 +3,16 @@ command:
   - dash_app.py
 
 env:
+  - name: LAKEBASE_PROJECT_ID
+    value: "83eb266d-27f8-4467-a7df-2b048eff09d7"
+  - name: LAKEBASE_BRANCH_ID
+    value: "br-shiny-math-d28d0cd4"
   - name: PGHOST
-    value: "instance-6b59171b-cee8-4acc-9209-6c848ffbfbfe.database.cloud.databricks.com"
+    value: "ep-hidden-haze-d2v9brhq.database.us-east-1.cloud.databricks.com"
   - name: PGDATABASE
     value: "databricks_postgres"
   - name: PGUSER
-    value: "1e6260c5-f44b-4d66-bb19-ccd360f98b36"
+    value: "f6e5df56-fa6c-4262-970b-8f27dd6fa850"
   - name: PGPORT
     value: "5432"
   - name: PGSSLMODE

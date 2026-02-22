@@ -1,6 +1,9 @@
 """
-Databricks Lakebase End-to-End Training Dashboard - Enhanced Version
-A comprehensive training application showcasing advanced Lakebase integration features:
+Databricks Lakebase Autoscaling End-to-End Training Dashboard
+A comprehensive training application showcasing Lakebase Autoscaling features:
+- Project/Branch/Endpoint resource hierarchy
+- Autoscaling compute (0.5-112 CU) with scale-to-zero
+- OAuth credential generation via w.postgres SDK
 - Create Order with Transaction Handling
 - Real-Time Insert Verification Panel
 - Audit Trail with PostgreSQL Triggers
@@ -9,6 +12,8 @@ A comprehensive training application showcasing advanced Lakebase integration fe
 
 import os
 import json
+import subprocess
+import socket
 import dash
 from dash import dcc, html, Input, Output, State, callback, dash_table
 import dash_bootstrap_components as dbc
@@ -23,58 +28,175 @@ from datetime import datetime
 import time
 import base64
 import io
-from databricks import sdk
+from databricks.sdk import WorkspaceClient
 
 # ========================================
-# OAuth Token Management
+# Lakebase Autoscaling Configuration
 # ========================================
-workspace_client = None
-postgres_password = None
-last_password_refresh = 0
-
-def get_oauth_token():
-    """Get OAuth token from Databricks SDK."""
-    global workspace_client, postgres_password, last_password_refresh
-
-    if postgres_password is None or time.time() - last_password_refresh > 900:
-        print("Refreshing OAuth token...")
-        try:
-            if workspace_client is None:
-                workspace_client = sdk.WorkspaceClient()
-            postgres_password = workspace_client.config.oauth_token().access_token
-            last_password_refresh = time.time()
-            print("OAuth token refreshed successfully")
-        except Exception as e:
-            print(f"Failed to get OAuth token: {e}")
-            raise
-    return postgres_password
-
-# ========================================
-# Database Configuration - CORRECTED
-# ========================================
-PGHOST = os.getenv('PGHOST', 'instance-6b59171b-cee8-4acc-9209-6c848ffbfbfe.database.cloud.databricks.com')
+LAKEBASE_PROJECT_ID = os.getenv('LAKEBASE_PROJECT_ID', '')
+LAKEBASE_BRANCH_ID = os.getenv('LAKEBASE_BRANCH_ID', 'production')
 PGDATABASE = os.getenv('PGDATABASE', 'databricks_postgres')
-PGUSER = os.getenv('PGUSER', '1e6260c5-f44b-4d66-bb19-ccd360f98b36')
 PGPORT = os.getenv('PGPORT', '5432')
 
-def get_db_connection():
-    """Get a fresh database connection."""
-    token = get_oauth_token()
-    conn_string = (
-        f"dbname={PGDATABASE} "
-        f"user={PGUSER} "
-        f"password={token} "
-        f"host={PGHOST} "
-        f"port={PGPORT} "
-        f"sslmode=require"
+# Legacy support: if PGHOST is set directly, use it (for provisioned or pre-resolved endpoints)
+PGHOST_OVERRIDE = os.getenv('PGHOST', '')
+PGUSER_OVERRIDE = os.getenv('PGUSER', '')
+
+# ========================================
+# Lakebase Autoscaling Credential Manager
+# ========================================
+_workspace_client = None
+_cached_token = None
+_cached_host = None
+_cached_username = None
+_cached_endpoint_name = None
+_last_token_refresh = 0
+TOKEN_REFRESH_INTERVAL = 3000  # 50 minutes (tokens expire in 1 hour)
+
+def _get_workspace_client():
+    """Get or create the WorkspaceClient singleton."""
+    global _workspace_client
+    if _workspace_client is None:
+        _workspace_client = WorkspaceClient()
+    return _workspace_client
+
+
+def _resolve_hostname(hostname):
+    """Resolve hostname with macOS DNS workaround using dig."""
+    try:
+        return socket.gethostbyname(hostname)
+    except socket.gaierror:
+        pass
+    try:
+        result = subprocess.run(
+            ["dig", "+short", hostname],
+            capture_output=True, text=True, timeout=5,
+        )
+        ips = result.stdout.strip().split('\n')
+        for ip in ips:
+            if ip and not ip.startswith(';') and '.' in ip:
+                return ip
+    except Exception:
+        pass
+    return None
+
+
+def _discover_endpoint():
+    """Discover the Lakebase Autoscaling endpoint host and username."""
+    global _cached_host, _cached_username, _cached_endpoint_name
+
+    w = _get_workspace_client()
+
+    # If LAKEBASE_PROJECT_ID is set, discover the endpoint name for credential generation
+    if LAKEBASE_PROJECT_ID:
+        try:
+            endpoints = list(w.postgres.list_endpoints(
+                parent=f"projects/{LAKEBASE_PROJECT_ID}/branches/{LAKEBASE_BRANCH_ID}"
+            ))
+            if endpoints:
+                _cached_endpoint_name = endpoints[0].name
+                endpoint = w.postgres.get_endpoint(name=endpoints[0].name)
+                _cached_host = PGHOST_OVERRIDE or endpoint.status.hosts.host
+                _cached_username = PGUSER_OVERRIDE or w.current_user.me().user_name
+                min_cu = getattr(endpoint.spec, 'autoscaling_limit_min_cu', 'N/A')
+                max_cu = getattr(endpoint.spec, 'autoscaling_limit_max_cu', 'N/A')
+                print(f"Autoscaling endpoint: {_cached_host} ({min_cu}-{max_cu} CU)")
+                return
+            else:
+                print(f"Warning: No endpoints found for project={LAKEBASE_PROJECT_ID}")
+        except Exception as e:
+            print(f"Warning: Autoscaling discovery failed: {e}")
+
+    # Fallback: use explicit PGHOST (provisioned or pre-resolved)
+    if PGHOST_OVERRIDE:
+        _cached_host = PGHOST_OVERRIDE
+        _cached_username = PGUSER_OVERRIDE or w.current_user.me().user_name
+        _cached_endpoint_name = None
+        print(f"Using explicit host: {_cached_host}")
+        return
+
+    raise ValueError(
+        "LAKEBASE_PROJECT_ID or PGHOST must be set. "
+        "Run: python setup_lakebase_project.py --project-id <your-project> --info"
     )
-    return psycopg.connect(conn_string, row_factory=dict_row)
+
+
+def _generate_credential():
+    """Generate a fresh OAuth token for the Lakebase endpoint."""
+    global _cached_token, _last_token_refresh
+
+    now = time.time()
+    if _cached_token and (now - _last_token_refresh) < TOKEN_REFRESH_INTERVAL:
+        return _cached_token
+
+    print("Generating Lakebase credential...")
+    w = _get_workspace_client()
+
+    if _cached_endpoint_name:
+        # Autoscaling mode: use w.postgres.generate_database_credential
+        cred = w.postgres.generate_database_credential(endpoint=_cached_endpoint_name)
+        _cached_token = cred.token
+    else:
+        # Legacy/provisioned mode: use workspace OAuth token
+        _cached_token = w.config.oauth_token().access_token
+
+    _last_token_refresh = time.time()
+    print("Credential generated successfully")
+    return _cached_token
+
+
+def get_db_connection(retries=3):
+    """Get a fresh database connection with retry for scale-to-zero cold starts."""
+    if not _cached_host:
+        _discover_endpoint()
+
+    token = _generate_credential()
+    host = _cached_host
+    username = _cached_username
+
+    # Resolve IP for macOS DNS workaround
+    hostaddr = _resolve_hostname(host)
+
+    conn_params = {
+        "host": host,
+        "dbname": PGDATABASE,
+        "user": username,
+        "password": token,
+        "port": PGPORT,
+        "sslmode": "require",
+    }
+    if hostaddr:
+        conn_params["hostaddr"] = hostaddr
+
+    for attempt in range(retries):
+        try:
+            return psycopg.connect(
+                **conn_params,
+                row_factory=dict_row,
+                connect_timeout=10,
+            )
+        except Exception as e:
+            if attempt < retries - 1:
+                wait = (attempt + 1) * 2
+                print(f"Connection attempt {attempt + 1} failed ({e}), retrying in {wait}s...")
+                time.sleep(wait)
+            else:
+                raise
+
+
+# Initialize endpoint discovery at startup
+try:
+    _discover_endpoint()
+except Exception as e:
+    print(f"Warning: Endpoint discovery failed at startup: {e}")
+    print("Will retry on first connection attempt.")
+
 
 # ========================================
 # Database Connection Manager
 # ========================================
 class LakebaseConnection:
-    """Manage Lakebase database connections with OAuth token refresh"""
+    """Manage Lakebase Autoscaling connections with credential refresh and retry."""
 
     def __init__(self):
         self.connection = None
@@ -88,17 +210,13 @@ class LakebaseConnection:
         self.close()
 
     def connect(self):
-        """Establish connection to Lakebase"""
-        try:
-            self.connection = get_db_connection()
-            self.cursor = self.connection.cursor()
-            return True
-        except Exception as e:
-            print(f"Connection failed: {e}")
-            return False
+        """Establish connection to Lakebase Autoscaling endpoint."""
+        self.connection = get_db_connection()
+        self.cursor = self.connection.cursor()
+        return True
 
     def execute_query(self, query, params=None):
-        """Execute a query and return results"""
+        """Execute a query and return results."""
         if not self.connection or not self.cursor:
             raise Exception("Database connection not established")
         try:
@@ -121,7 +239,7 @@ class LakebaseConnection:
             raise e
 
     def close(self):
-        """Close database connection"""
+        """Close database connection."""
         try:
             if self.cursor:
                 self.cursor.close()
@@ -632,9 +750,12 @@ def update_connection_status(n):
     try:
         with LakebaseConnection() as db:
             db.execute_query("SELECT 1")
+        host_info = _cached_host or "discovering..."
+        mode = "Autoscaling" if LAKEBASE_PROJECT_ID else "Provisioned"
+        project_info = f" | Project: {LAKEBASE_PROJECT_ID}/{LAKEBASE_BRANCH_ID}" if LAKEBASE_PROJECT_ID else ""
         return dbc.Alert([
             html.I(className="fas fa-check-circle me-2"),
-            f"Connected to Lakebase: {PGHOST} / {PGDATABASE}"
+            f"Connected to Lakebase ({mode}): {host_info} / {PGDATABASE}{project_info}"
         ], color="success", className="mb-0")
     except Exception as e:
         return dbc.Alert([
@@ -995,5 +1116,8 @@ def download_template(n_clicks):
 if __name__ == '__main__':
     port = int(os.environ.get('DATABRICKS_APP_PORT', os.environ.get('PORT', '8080')))
     print(f"Starting app on port {port}")
-    print(f"Database config: host={PGHOST}, db={PGDATABASE}, user={PGUSER}")
+    if LAKEBASE_PROJECT_ID:
+        print(f"Lakebase Autoscaling: project={LAKEBASE_PROJECT_ID}, branch={LAKEBASE_BRANCH_ID}")
+    else:
+        print(f"Lakebase config: host={PGHOST_OVERRIDE or 'auto-discover'}, db={PGDATABASE}")
     app.run_server(debug=True, host='0.0.0.0', port=port)

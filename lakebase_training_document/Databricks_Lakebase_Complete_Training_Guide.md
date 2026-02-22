@@ -30,9 +30,9 @@
 
 ## Training Overview
 
-This comprehensive training guide covers everything you need to know about building production-ready applications with Databricks Lakebase. You will learn:
+This comprehensive training guide covers everything you need to know about building production-ready applications with Databricks Lakebase Autoscaling. You will learn:
 
-- How to set up and configure Lakebase instances
+- How to create and configure Lakebase Autoscaling projects with branching
 - Database schema design with advanced PostgreSQL features
 - Building interactive dashboards with real-time data
 - Implementing audit trails using database triggers
@@ -77,74 +77,119 @@ Databricks Lakebase is a fully-managed serverless PostgreSQL database that emerg
 
 **Duration:** 10:00 AM - 11:00 AM (1 hour)
 
-### 2.1 Creating a Lakebase Instance
+### 2.1 Creating a Lakebase Autoscaling Project
 
-**Step 1: Access Databricks Console**
+Lakebase Autoscaling uses a **Project > Branch > Endpoint** hierarchy:
+
+```
+Project (training-app)
+├── Branch: production (auto-created)
+│   └── Compute Endpoint (autoscaling, 0.5-112 CU)
+└── Branch: development (optional)
+    └── Compute Endpoint (independent scaling)
+```
+
+**Option A: Using the setup script (recommended)**
+
+```bash
+python setup_lakebase_project.py --project-id training-app --create
+python setup_lakebase_project.py --project-id training-app --info
+```
+
+**Option B: Using the Databricks UI**
 1. Navigate to your Databricks workspace
-2. Go to **Compute** → **OLTP Databases** tab
-3. Click **Create Database**
+2. Go to **SQL** > **OLTP Databases**
+3. Click **Create Database** > **Autoscaling**
+4. Configure: Name `training-app`, PostgreSQL version 17
 
-**Step 2: Configure Instance**
-| Setting | Value |
-|---------|-------|
-| Name | `training-lakebase` |
-| Region | `us-east-2` |
-| Compute Size | Auto-scaling |
+**Option C: Using the Python SDK**
+```python
+from databricks.sdk import WorkspaceClient
+from databricks.sdk.service.postgres import Project, ProjectSpec
 
-### 2.2 Connecting to Lakebase
+w = WorkspaceClient()
+operation = w.postgres.create_project(
+    project=Project(spec=ProjectSpec(
+        display_name="Lakebase Training: training-app",
+        pg_version="17",
+    )),
+    project_id="training-app",
+)
+result = operation.wait()  # Long-running operation
+print(f"Project created: {result.name}")
+```
 
-**Important Authentication Note:**
-When connecting to Lakebase, the `PGUSER` must match the identity in your OAuth token:
-- **For local development with user credentials:** Use your Databricks email as PGUSER
-- **For Databricks Apps (Service Principal):** Use the Service Principal ID as PGUSER
+### 2.2 Connecting to Lakebase Autoscaling
+
+Lakebase Autoscaling discovers endpoints and generates credentials automatically:
+
+**Using the Python SDK (recommended):**
+```python
+from databricks.sdk import WorkspaceClient
+
+w = WorkspaceClient()
+
+# Discover endpoint
+endpoints = list(w.postgres.list_endpoints(
+    parent="projects/training-app/branches/production"
+))
+endpoint = w.postgres.get_endpoint(name=endpoints[0].name)
+host = endpoint.status.hosts.host
+
+# Generate credential (valid 1 hour)
+cred = w.postgres.generate_database_credential(endpoint=endpoints[0].name)
+username = w.current_user.me().user_name
+```
+
+**Using psql:**
+```bash
+# Get connection info from the setup script
+python setup_lakebase_project.py --project-id training-app --info
+# Then use the connection string from the output
+```
 
 **Using DBeaver:**
 1. Create new PostgreSQL connection
-2. Enter connection details:
-   - Host: `instance-<instance-id>.database.cloud.databricks.com`
+2. Get the endpoint host from: `python setup_lakebase_project.py --info`
+3. Enter connection details:
+   - Host: `ep-XXXXX.cloud.databricks.com` (from --info output)
    - Port: `5432`
    - Database: `databricks_postgres`
-   - Username: Your email or Service Principal ID
-   - Password: `<your-oauth-token>`
+   - Username: Your Databricks email
+   - Password: Generated credential token
    - SSL Mode: `require`
 
-**Using psql (Local Development):**
-```bash
-export PGHOST="instance-<instance-id>.database.cloud.databricks.com"
-export PGDATABASE="databricks_postgres"
-export PGUSER="your.email@company.com"  # Must match OAuth token identity
-export PGPASSWORD="<your-oauth-token>"
-export PGSSLMODE="require"
-
-psql
+**For Databricks Apps Deployment (app.yaml):**
+```yaml
+env:
+  - name: LAKEBASE_PROJECT_ID
+    value: "training-app"
+  - name: LAKEBASE_BRANCH_ID
+    value: "production"
 ```
+> No hardcoded hostnames or tokens needed. The app discovers endpoints and generates credentials at runtime.
 
-**For Databricks Apps Deployment:**
-```bash
-# In app.yaml, use Service Principal ID
-export PGHOST="instance-<instance-id>.database.cloud.databricks.com"
-export PGDATABASE="databricks_postgres"
-export PGUSER="<service-principal-id>"  # e.g., 1e6260c5-f44b-4d66-bb19-ccd360f98b36
-export PGPORT="5432"
-export PGSSLMODE="require"
-```
+### 2.3 Credential Generation (Autoscaling)
 
-### 2.3 OAuth Token Authentication
-
-Lakebase uses OAuth tokens for authentication. Tokens expire after 1 hour.
+Lakebase Autoscaling uses `w.postgres.generate_database_credential()` instead of `w.config.oauth_token()`. Tokens expire after 1 hour; the app refreshes every 50 minutes.
 
 ```python
-from databricks import sdk
+from databricks.sdk import WorkspaceClient
 
-# Initialize workspace client
-workspace_client = sdk.WorkspaceClient()
+w = WorkspaceClient()
 
-# Get OAuth token
-token = workspace_client.config.oauth_token().access_token
+# Discover the endpoint
+endpoints = list(w.postgres.list_endpoints(
+    parent="projects/training-app/branches/production"
+))
 
-# Use as password
-PGPASSWORD = token
+# Generate credential
+cred = w.postgres.generate_database_credential(endpoint=endpoints[0].name)
+password = cred.token  # Valid for 1 hour
+username = w.current_user.me().user_name
 ```
+
+> **Note:** For legacy/provisioned Lakebase, use `w.config.oauth_token().access_token` instead.
 
 ### 2.4 Granting Permissions to Service Principals
 

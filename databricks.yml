@@ -1,11 +1,19 @@
 bundle:
   name: lakebase-training-app
 
+variables:
+  lakebase_project_id:
+    description: "Lakebase Autoscaling project ID"
+    default: "training-app"
+  lakebase_branch_id:
+    description: "Lakebase Autoscaling branch ID"
+    default: "production"
+
 resources:
   apps:
     lakebase_training_dashboard:
       name: lakebase-training-app
-      description: "Interactive Lakebase Training Dashboard with Dash - Fixed 502 Error"
+      description: "Lakebase Autoscaling End-to-End Training Dashboard with Dash"
 
       # Source configuration
       source_code_path: .
